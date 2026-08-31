@@ -16,13 +16,18 @@
 
   const $ = (s) => document.querySelector(s);
   const pill = (label, on) => `<span class="pill ${on ? 'on' : 'off'}">${label}</span>`;
+
+  // Sin login, lo único disponible es la pantalla de conectar.
   const show = (name) => {
+    if (!state.token && name !== 'conectar') return;
     document.querySelectorAll('.step').forEach((el) => el.classList.toggle('active', el.id === name));
     document.querySelectorAll('.steps button').forEach((b) => b.classList.toggle('active', b.dataset.step === name));
   };
   document.querySelectorAll('.steps button').forEach((b) => b.addEventListener('click', () => show(b.dataset.step)));
 
+  let statusTimer = null;
   async function refreshStatus() {
+    if (!state.token) return;
     const r = await api.getStatus();
     if (!r.ok) return;
     const s = r.data;
@@ -32,11 +37,10 @@
       pill('Mongo', s.mongoUp),
     ].join('');
   }
-  setInterval(refreshStatus, 3000);
-  refreshStatus();
 
-  // --- jornada sin sincronizar (datos locales, funciona sin internet) ---
+  // --- jornada sin sincronizar (solo tras login: lee la DB local, arranca el stack) ---
   async function checkPending() {
+    if (!state.token) return;
     const r = await api.getPending();
     if (!r.ok || !Array.isArray(r.data) || r.data.length === 0) {
       $('#pendingBar').hidden = true;
@@ -46,17 +50,7 @@
     const inst = r.data[0];
     state.pending = inst;
     if (!state.institutionId) state.institutionId = inst._id;
-    $('#pendingBar').hidden = false;
 
-    const n = r.data.length;
-    if (!state.token) {
-      // pre-login: no filtramos el nombre de la institución
-      $('#pendingText').textContent =
-        `🔒 ${n} institución${n > 1 ? 'es' : ''} en modo sede en esta laptop — conectate para sincronizar y finalizar`;
-      $('#btnGoSync').textContent = 'Conectar';
-      $('#syncTarget').textContent = '';
-      return;
-    }
     const since = inst.offlineMode && inst.offlineMode.since
       ? new Date(inst.offlineMode.since).toLocaleDateString('es-AR')
       : null;
@@ -64,11 +58,19 @@
     $('#pendingText').textContent =
       `🔒 Modo sede activo: ${inst.name}${since ? ` (desde ${since})` : ''}` +
       (synced ? '' : ' — todavía sin sincronizar');
-    $('#btnGoSync').textContent = 'Ir a sincronizar';
     $('#syncTarget').textContent = `Institución: ${inst.name}`;
+    $('#pendingBar').hidden = false;
   }
-  checkPending();
-  $('#btnGoSync').addEventListener('click', () => show(state.token ? 'sincronizar' : 'conectar'));
+  $('#btnGoSync').addEventListener('click', () => show('sincronizar'));
+
+  // Cuando el login tiene éxito: recién ahí aparece todo lo demás.
+  async function onLoggedIn() {
+    $('#stepsNav').hidden = false;
+    $('#statusStrip').hidden = false;
+    statusTimer = statusTimer || setInterval(refreshStatus, 3000);
+    await refreshStatus();
+    await checkPending();
+  }
 
   // --- 1. login ---
   async function doLogin() {
@@ -82,7 +84,7 @@
     state.role = r.data.role;
     $('#loginMsg').textContent = 'Conectado ✓';
     $('#btnForget').hidden = !$('#remember').checked;
-    await checkPending(); // ahora sí puede mostrar el nombre
+    await onLoggedIn();
     await loadInstitutions();
     show(state.pending ? 'sincronizar' : 'institucion');
   }
