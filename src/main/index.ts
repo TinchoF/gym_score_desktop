@@ -8,13 +8,21 @@ import { CLOUD_API_URL } from './config';
 let win: BrowserWindow | null = null;
 
 function createWindow() {
+  const preloadPath = path.join(__dirname, '..', 'preload', 'index.js');
   win = new BrowserWindow({
     width: 900,
     height: 680,
     title: 'GymScore — Modo Sede',
-    webPreferences: { preload: path.join(__dirname, '..', 'preload', 'index.js') },
+    webPreferences: { preload: preloadPath },
   });
   win.loadFile(path.join(__dirname, '..', '..', 'renderer', 'index.html'));
+
+  // Diagnóstico: reenviar la consola del renderer y los errores de preload al stdout.
+  win.webContents.on('preload-error', (_e, p, err) => console.error('[preload-error]', p, err));
+  win.webContents.on('console-message', (_e, level, message) =>
+    console.log(`[renderer:${level}]`, message),
+  );
+  if (process.env.GYMSCORE_DEVTOOLS === '1') win.webContents.openDevTools({ mode: 'detach' });
 }
 
 app.whenReady().then(createWindow);

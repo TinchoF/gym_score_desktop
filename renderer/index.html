@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:;" />
   <title>GymScore — Modo Sede</title>
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -23,8 +25,8 @@
     <!-- 1 -->
     <section id="conectar" class="step active">
       <h2>Conectar a la nube</h2>
-      <p class="muted">Necesitás internet solo para este paso y para sincronizar al final.</p>
-      <label>Usuario <input id="user" type="text" autocomplete="username" /></label>
+      <p class="muted">Login de <strong>super-admin</strong>. Necesitás internet solo para este paso y para sincronizar al final.</p>
+      <label>Usuario <input id="user" type="text" autocomplete="username" placeholder="usuario de super-admin" /></label>
       <label>Contraseña <input id="pass" type="password" autocomplete="current-password" /></label>
       <button id="btnLogin">Ingresar</button>
       <p id="loginMsg" class="msg"></p>

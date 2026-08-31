@@ -17,15 +17,21 @@ async function j<T>(res: Response): Promise<T> {
 
 // --- nube ---
 
+/**
+ * Login de super-admin contra la nube. La app web usa el prefijo `###` en el
+ * username para marcar super-admin; acá lo aceptamos con o sin prefijo y siempre
+ * mandamos role: 'super-admin' (la app Electron es una herramienta de super-admin).
+ */
 export async function login(username: string, password: string): Promise<{ token: string; role: string }> {
+  const clean = username.trim().replace(/^###/, '');
   const data = await j<any>(
     await fetch(`${CLOUD_API_URL}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username: clean, password, role: 'super-admin' }),
     }),
   );
-  return { token: data.token, role: data.role || data.user?.role };
+  return { token: data.token, role: 'super-admin' };
 }
 
 export async function listInstitutions(token: string): Promise<any[]> {
