@@ -151,11 +151,12 @@
       $('#manageState').className = 'state-banner warn';
       $('#actSede').hidden = false;
     } else if (st === 'sede-otra') {
-      $('#manageState').textContent = 'En modo sede — otra laptop.';
+      $('#manageState').textContent = 'En modo sede — no está en esta laptop.';
       $('#manageState').className = 'state-banner muted';
-      $('#actOther').textContent =
-        `Está en modo sede en otra laptop${om.deviceLabel ? ` (${om.deviceLabel})` : ''}` +
-        ` desde ${fmtDate(om.since)}. No podés operar desde acá hasta que esa laptop sincronice y finalice.`;
+      $('#actOtherText').textContent =
+        `Bloqueada en modo sede${om.deviceLabel ? ` (dispositivo: ${om.deviceLabel})` : ''}` +
+        ` desde ${fmtDate(om.since)}, pero no tenés la copia local acá. ` +
+        `Esperá a que esa laptop sincronice y finalice, o forzá el desbloqueo.`;
       $('#actOther').hidden = false;
     } else {
       $('#manageState').textContent = 'Ya desbloqueada online — la copia local quedó vieja.';
@@ -204,16 +205,25 @@
     }
   }
 
-  $('#btnForce').addEventListener('click', async () => {
-    if (!confirm('¿Forzar desbloqueo? Se descarta TODO lo de la jornada que no haya llegado a la nube.')) return;
-    await api.unlock(state.token, state.managing._id);
-    await api.discardLocal(state.managing._id);
+  async function forceUnlock(msg) {
+    if (!confirm(msg)) return;
+    const inst = state.managing;
+    $('#report').textContent = 'Desbloqueando…';
+    const u = await api.unlock(state.token, inst._id);
+    if (!u.ok) { $('#report').textContent = `No se pudo desbloquear en la nube: ${u.error}`; return; }
+    await api.discardLocal(inst._id); // best-effort: puede no haber copia local
     await loadList();
     show('viewList');
-  });
+  }
+  $('#btnForce').addEventListener('click', () =>
+    forceUnlock('¿Forzar desbloqueo? Se descarta TODO lo de la jornada que no haya llegado a la nube.'));
+  $('#btnForceOther').addEventListener('click', () =>
+    forceUnlock('¿Forzar desbloqueo? Si otra laptop está atendiendo el torneo, pierde lo no sincronizado.'));
+
   $('#btnDiscard').addEventListener('click', async () => {
     if (!confirm('¿Descartar la copia local de esta institución?')) return;
-    await api.discardLocal(state.managing._id);
+    const r = await api.discardLocal(state.managing._id);
+    if (!r.ok) { $('#report').textContent = `Error: ${r.error}`; return; }
     await loadList();
     show('viewList');
   });
