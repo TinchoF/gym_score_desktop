@@ -4,6 +4,7 @@ const invoke = (ch: string, ...args: any[]) => ipcRenderer.invoke(ch, ...args);
 
 contextBridge.exposeInMainWorld('api', {
   getConfig: () => invoke('config:get'),
+  openLog: () => invoke('diag:openLog'),
   makeQr: (text: string) => invoke('qr:make', text),
   getStatus: () => invoke('status:get'),
   startServing: () => invoke('serve:start'),

@@ -1,6 +1,6 @@
 {
   "name": "gym-score-desktop",
-  "version": "0.1.0",
+  "version": "0.1.3",
   "private": true,
   "description": "GymScore — Modo Sede. Sirve un torneo GymScore sin internet desde una laptop.",
   "author": "GymScore",

@@ -1,12 +1,14 @@
-import { app, BrowserWindow, ipcMain, nativeImage } from 'electron';
+import { app, BrowserWindow, ipcMain, nativeImage, shell } from 'electron';
 import path from 'path';
 import { ensureBackend, startAdvertising, stopAdvertising, shutdownAll, getStatus } from './localStack';
 import * as cloud from './cloud';
 import QRCode from 'qrcode';
 import { saveCreds, loadCreds, clearCreds } from './credentials';
 import { CLOUD_API_URL } from './config';
+import { initFileLogging, getLogPath } from './logger';
 
 app.setName('GymScore Modo Sede'); // nombre en el menú / dock en dev
+initFileLogging(); // la app empaquetada no tiene terminal — todo console.log/error también va a un archivo
 
 let win: BrowserWindow | null = null;
 
@@ -100,6 +102,11 @@ const handle = <T,>(ch: string, fn: (...a: any[]) => Promise<T> | T) =>
   });
 
 handle('config:get', () => ({ cloudUrl: CLOUD_API_URL }));
+handle('diag:openLog', () => {
+  const p = getLogPath();
+  if (p) shell.showItemInFolder(p);
+  return p;
+});
 handle('qr:make', (text: string) => QRCode.toDataURL(text, { width: 260, margin: 1 }));
 handle('status:get', () => getStatus());
 handle('serve:start', () => startAdvertising());

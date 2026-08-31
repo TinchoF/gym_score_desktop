@@ -49,6 +49,7 @@
   }
   $('#btnLogin').addEventListener('click', doLogin);
   $('#pass').addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
+  $('#btnOpenLog').addEventListener('click', () => api.openLog());
   $('#btnForget').addEventListener('click', async () => {
     await api.clearCreds();
     $('#remember').checked = false;
@@ -180,7 +181,7 @@
 
   $('#btnPrepare').addEventListener('click', async () => {
     const inst = state.managing;
-    $('#report').textContent = 'Bloqueando y descargando… (puede tardar)';
+    $('#report').textContent = 'Bloqueando y descargando… (puede tardar hasta 1-2 minutos la primera vez que se usa esta laptop)';
     const r = await api.prepare(state.token, inst._id, $('#deviceLabel').value.trim() || undefined);
     if (!r.ok) { $('#report').textContent = `Error: ${r.error}`; return; }
     const c = (r.data.imported && r.data.imported.counts) || {};

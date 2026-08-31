@@ -10,8 +10,11 @@ files:
 extraResources:
   - from: resources/backend
     to: backend
+    filter: ["**/*", "!node_modules"]   # node_modules lo copia afterPack.js (ver por qué ahí)
   - from: resources/frontend
     to: frontend
+    filter: ["**/*"]
+afterPack: build/afterPack.js
 afterSign: build/afterSign.js
 mac:
   target: dmg

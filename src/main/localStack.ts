@@ -9,6 +9,7 @@
  *  - `shutdownAll()` — todo abajo, al cerrar la app.
  */
 import { fork, ChildProcess, execSync } from 'child_process';
+import fs from 'fs';
 import { powerSaveBlocker } from 'electron';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { Bonjour } from 'bonjour-service';
@@ -58,7 +59,7 @@ async function isHealthy(): Promise<boolean> {
   }
 }
 
-async function waitForHealth(timeoutMs = 30000): Promise<void> {
+async function waitForHealth(timeoutMs = 120000): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     if (await isHealthy()) return;
@@ -82,6 +83,38 @@ async function teardown(): Promise<void> {
   } catch { /* no había ninguno */ }
 }
 
+const MONGOD_VERSION = '8.2.6';
+
+/**
+ * Arranca mongod contra dbPath. Si los archivos de datos son de OTRA versión de
+ * mongod (típicamente porque una corrida anterior, antes de fijar MONGOD_VERSION,
+ * usó "la última" versión resuelta en ese momento — que puede variar), mongod
+ * rechaza arrancar con exit code 62 (EXIT_NEED_UPGRADE) y mongodb-memory-server lo
+ * reporta como "Instance closed unexpectedly with code 62". dbPath acá es solo
+ * caché local de trabajo (el contenido real vive en la nube / se repuebla al
+ * "Descargar y poner en modo sede"), así que ante ese fallo puntual la recuperación
+ * segura es borrar dbPath y reintentar una vez con datos frescos.
+ */
+async function createMongo(): Promise<MongoMemoryServer> {
+  const dbPath = mongoDataDir();
+  try {
+    return await MongoMemoryServer.create({
+      instance: { dbPath, storageEngine: 'wiredTiger' },
+      binary: { version: MONGOD_VERSION },
+    });
+  } catch (err) {
+    console.error('[localStack] mongod no arrancó con los datos existentes, reintentando en limpio:', err);
+    try {
+      fs.rmSync(dbPath, { recursive: true, force: true });
+      fs.mkdirSync(dbPath, { recursive: true }); // mongod espera que dbPath YA exista, no lo crea solo
+    } catch { /* noop */ }
+    return MongoMemoryServer.create({
+      instance: { dbPath, storageEngine: 'wiredTiger' },
+      binary: { version: MONGOD_VERSION },
+    });
+  }
+}
+
 /** Deja mongo + backend arriba y sano. Reinicia todo si algo está mal. Idempotente. */
 export async function ensureBackend(): Promise<void> {
   if (backend && !backend.killed && (await isHealthy())) return;
@@ -92,9 +125,15 @@ export async function ensureBackend(): Promise<void> {
     await new Promise((r) => setTimeout(r, 400));
 
     // Puerto dinámico → sin choques con zombies. dbPath persistente.
-    mongo = await MongoMemoryServer.create({
-      instance: { dbPath: mongoDataDir(), storageEngine: 'wiredTiger' },
-    });
+    // Versión de mongod FIJADA a propósito: sin esto, mongodb-memory-server resuelve
+    // "la última" contra la red en cada llamada, y esa resolución puede cambiar de
+    // una corrida a otra — cada cambio de versión vuelve a descargar ~76MB (~1min),
+    // aunque ya haya una versión distinta cacheada en ~/.cache/mongodb-binaries.
+    // Confirmado en pruebas: dos corridas sin pin cachearon 7.0.24 y 8.2.6 por separado.
+    // Con la versión fija, la descarga pasa UNA sola vez por máquina.
+    console.log('[localStack] iniciando mongod embebido (puede descargar ~76MB la primera vez en esta laptop)…');
+    mongo = await createMongo();
+    console.log('[localStack] mongod listo:', mongo.getUri());
     const mongoUri = mongo.getUri('gymscore');
 
     const secret = localSecret();
