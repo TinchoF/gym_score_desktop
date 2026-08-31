@@ -17,3 +17,5 @@ mac:
   category: public.app-category.sports
   # sin firmar por ahora — ver docs/MODO_SEDE.md (sección firma de código)
   identity: null
+  # nombre fijo (sin versión) para que el link de descarga no cambie con cada release
+  artifactName: "GymScore-Modo-Sede.dmg"
