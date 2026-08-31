@@ -127,8 +127,16 @@ handle('cloud:prepare', async (token: string, institutionId: string, deviceLabel
   await ensureBackend(); // el import va al backend local — tiene que estar arriba
   return cloud.prepareForOffline(token, institutionId, deviceLabel);
 });
-handle('cloud:sync', async (token: string, institutionId: string, finalize: boolean) => {
-  await ensureBackend(); // el export sale del backend local
-  return cloud.syncToCloud(token, institutionId, finalize);
-});
+handle(
+  'cloud:sync',
+  async (
+    token: string,
+    institutionId: string,
+    finalize: boolean,
+    conflictResolution?: 'overwrite' | 'keepCloud',
+  ) => {
+    await ensureBackend(); // el export sale del backend local
+    return cloud.syncToCloud(token, institutionId, finalize, conflictResolution);
+  },
+);
 handle('cloud:unlock', (token: string, institutionId: string) => cloud.unlockInstitution(token, institutionId));

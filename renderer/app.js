@@ -163,7 +163,25 @@
   });
 
   // --- 4. sincronizar ---
-  async function doSync(finalize) {
+  function renderConflicts(conflicts, finalize) {
+    $('#conflictList').innerHTML = (conflicts || [])
+      .map((c) => {
+        const fields = (c.changedFields || [])
+          .map((f) => `${f}: nube = ${JSON.stringify(c.cloud[f])} · sede = ${c.local ? JSON.stringify(c.local[f]) : '—'}`)
+          .join('<br>');
+        return `<li><b>${c.label}</b> <span class="muted">(${c.collection})</span><br>${fields || 'cambió'}</li>`;
+      })
+      .join('');
+    $('#conflictBox').hidden = false;
+    $('#btnResolveVenue').onclick = () => { $('#conflictBox').hidden = true; doSync(finalize, 'overwrite'); };
+    $('#btnResolveCloud').onclick = () => { $('#conflictBox').hidden = true; doSync(finalize, 'keepCloud'); };
+    $('#btnResolveCancel').onclick = () => {
+      $('#conflictBox').hidden = true;
+      $('#syncResult').textContent = 'Cancelado. Arreglá los datos en la web y volvé a sincronizar.';
+    };
+  }
+
+  async function doSync(finalize, conflictResolution) {
     if (!state.token) {
       $('#syncResult').textContent = 'Conectate primero (paso 1 · Conectar) para sincronizar.';
       show('conectar');
@@ -173,9 +191,15 @@
       $('#syncResult').textContent = 'No hay ninguna jornada para sincronizar en esta laptop.';
       return;
     }
+    $('#conflictBox').hidden = true;
     $('#syncResult').textContent = 'Sincronizando…';
-    const r = await api.sync(state.token, state.institutionId, finalize);
+    const r = await api.sync(state.token, state.institutionId, finalize, conflictResolution);
     if (!r.ok) {
+      if (r.body && r.body.code === 'CONFLICTS') {
+        $('#syncResult').textContent = `${(r.body.conflicts || []).length} conflicto(s) — elegí abajo.`;
+        renderConflicts(r.body.conflicts, finalize);
+        return;
+      }
       $('#syncResult').textContent = `Error: ${r.error}\n${JSON.stringify(r.body || {}, null, 2)}`;
       return;
     }
@@ -185,8 +209,13 @@
       .filter(([, ids]) => ids.length)
       .map(([k, ids]) => `  ${k}: ${ids.length} para revisar y borrar a mano`)
       .join('\n');
+    const kept = (d.keptCloud || []).length
+      ? `\nse mantuvo la versión de la nube en ${d.keptCloud.length} doc(s)`
+      : d.resolution === 'overwrite'
+        ? '\nla sede pisó los cambios de la nube'
+        : '';
     $('#syncResult').textContent =
-      `OK ✓ ${finalize ? '(finalizado, candado liberado)' : '(sigue en modo sede)'}\n` +
+      `OK ✓ ${finalize ? '(finalizado, candado liberado)' : '(sigue en modo sede)'}${kept}\n` +
       `aplicados: ${JSON.stringify(d.applied)}\n` +
       (delLines ? `bajas a revisar:\n${delLines}` : 'sin bajas a revisar');
     await checkPending();

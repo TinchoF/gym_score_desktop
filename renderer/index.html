@@ -83,6 +83,21 @@
         <button id="btnFinalize" class="primary">Sincronizar y finalizar</button>
       </div>
       <pre id="syncResult" class="result"></pre>
+
+      <div id="conflictBox" class="conflict" hidden>
+        <h3>Se editaron datos en la nube durante la jornada</h3>
+        <p class="muted">
+          Alguien cambió información online mientras la institución estaba en modo sede.
+          Elegí qué versión conservar:
+        </p>
+        <ul id="conflictList"></ul>
+        <div class="row">
+          <button id="btnResolveVenue" class="primary">La sede tiene razón — pisar la nube</button>
+          <button id="btnResolveCloud">Mantener la nube en estos, sincronizar el resto</button>
+          <button id="btnResolveCancel" class="ghost">Cancelar — lo reviso a mano</button>
+        </div>
+      </div>
+
       <details>
         <summary>Algo salió mal — forzar desbloqueo</summary>
         <p class="muted">

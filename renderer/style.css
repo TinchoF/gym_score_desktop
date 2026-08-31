@@ -70,5 +70,9 @@ button.big { font-size: 22px; padding: 18px 40px; background: var(--ok); color: 
 .url.small { font-size: 14px; font-weight: 400; }
 #qr { display: block; margin: 12px 0; width: 240px; height: 240px; image-rendering: pixelated; }
 .result { background: #fff; border: 1px solid var(--rule); border-radius: 6px; padding: 12px; font-size: 12px; white-space: pre-wrap; }
+.conflict { margin-top: 14px; border: 1px solid #e9c9a3; background: #fdf7ef; border-radius: 8px; padding: 14px; }
+.conflict h3 { margin: 0 0 4px; font-size: 15px; }
+.conflict ul { margin: 10px 0; padding-left: 18px; font-size: 12px; }
+.conflict li { margin-bottom: 8px; line-height: 1.5; }
 details { margin-top: 24px; }
 summary { cursor: pointer; color: var(--muted); font-size: 13px; }

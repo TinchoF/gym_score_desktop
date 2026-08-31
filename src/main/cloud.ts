@@ -71,12 +71,18 @@ async function getBundle(token: string, institutionId: string): Promise<any> {
   );
 }
 
-async function pushSync(token: string, institutionId: string, payload: any, finalize: boolean): Promise<any> {
+async function pushSync(
+  token: string,
+  institutionId: string,
+  payload: any,
+  finalize: boolean,
+  conflictResolution?: 'overwrite' | 'keepCloud',
+): Promise<any> {
   return j(
     await fetch(`${CLOUD_API_URL}/api/offline/institutions/${institutionId}/sync`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ ...payload, finalize }),
+      body: JSON.stringify({ ...payload, finalize, conflictResolution }),
     }),
   );
 }
@@ -125,7 +131,12 @@ export async function prepareForOffline(token: string, institutionId: string, de
 }
 
 /** Exporta el estado local y lo sincroniza a la nube. `finalize` libera el candado. */
-export async function syncToCloud(token: string, institutionId: string, finalize: boolean) {
+export async function syncToCloud(
+  token: string,
+  institutionId: string,
+  finalize: boolean,
+  conflictResolution?: 'overwrite' | 'keepCloud',
+) {
   const payload = await exportLocal(institutionId);
-  return pushSync(token, institutionId, payload, finalize);
+  return pushSync(token, institutionId, payload, finalize, conflictResolution);
 }

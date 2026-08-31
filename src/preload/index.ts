@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('api', {
   login: (u: string, p: string, remember?: boolean) => invoke('cloud:login', u, p, remember),
   listInstitutions: (token: string) => invoke('cloud:institutions', token),
   prepare: (token: string, id: string, deviceLabel?: string) => invoke('cloud:prepare', token, id, deviceLabel),
-  sync: (token: string, id: string, finalize: boolean) => invoke('cloud:sync', token, id, finalize),
+  sync: (token: string, id: string, finalize: boolean, conflictResolution?: 'overwrite' | 'keepCloud') =>
+    invoke('cloud:sync', token, id, finalize, conflictResolution),
   unlock: (token: string, id: string) => invoke('cloud:unlock', token, id),
 });
