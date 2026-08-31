@@ -1,0 +1,8 @@
+node_modules/
+dist/
+release/
+resources/backend/
+resources/frontend/
+resources/mongo/
+.DS_Store
+*.log

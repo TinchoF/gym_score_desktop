@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GymScore — Modo Sede</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>GymScore · Modo Sede</h1>
+    <div id="statusStrip" class="strip"></div>
+  </header>
+
+  <nav class="steps">
+    <button data-step="conectar" class="active">1 · Conectar</button>
+    <button data-step="institucion">2 · Institución</button>
+    <button data-step="servir">3 · Servir</button>
+    <button data-step="sincronizar">4 · Sincronizar</button>
+  </nav>
+
+  <main>
+    <!-- 1 -->
+    <section id="conectar" class="step active">
+      <h2>Conectar a la nube</h2>
+      <p class="muted">Necesitás internet solo para este paso y para sincronizar al final.</p>
+      <label>Usuario <input id="user" type="text" autocomplete="username" /></label>
+      <label>Contraseña <input id="pass" type="password" autocomplete="current-password" /></label>
+      <button id="btnLogin">Ingresar</button>
+      <p id="loginMsg" class="msg"></p>
+    </section>
+
+    <!-- 2 -->
+    <section id="institucion" class="step">
+      <h2>Elegir institución</h2>
+      <p class="muted">Se descarga toda su información y queda bloqueada online hasta sincronizar.</p>
+      <select id="instSelect"></select>
+      <label>Etiqueta de este dispositivo (opcional)
+        <input id="deviceLabel" type="text" placeholder="ej: Notebook mesa de control" />
+      </label>
+      <button id="btnPrepare">Preparar para modo sede</button>
+      <p id="prepareMsg" class="msg"></p>
+    </section>
+
+    <!-- 3 -->
+    <section id="servir" class="step">
+      <h2>Servir en la red local</h2>
+      <button id="btnServe" class="big">SERVIR</button>
+      <div id="serveInfo" hidden>
+        <img id="qr" alt="QR de acceso" />
+        <p>Los jueces deben entrar a:</p>
+        <p class="url" id="serveUrl"></p>
+        <p class="muted">Si no abre, probá con: <span id="serveIp" class="url small"></span></p>
+      </div>
+    </section>
+
+    <!-- 4 -->
+    <section id="sincronizar" class="step">
+      <h2>Sincronizar a la nube</h2>
+      <p class="muted">Sube todo lo hecho en la jornada. "Finalizar" además libera el candado.</p>
+      <div class="row">
+        <button id="btnSync">Sincronizar (mantener en modo sede)</button>
+        <button id="btnFinalize" class="primary">Sincronizar y finalizar</button>
+      </div>
+      <pre id="syncResult" class="result"></pre>
+      <details>
+        <summary>Forzar desbloqueo (sin sincronizar)</summary>
+        <p class="muted">Descarta lo que no se haya sincronizado. Usar solo si algo salió mal.</p>
+        <button id="btnUnlock" class="danger">Forzar desbloqueo</button>
+      </details>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

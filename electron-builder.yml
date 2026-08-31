@@ -1,0 +1,18 @@
+appId: ar.com.gymscore.desktop
+productName: GymScore Modo Sede
+directories:
+  output: release
+files:
+  - dist/**/*
+  - renderer/**/*
+  - package.json
+extraResources:
+  - from: resources/backend
+    to: backend
+  - from: resources/frontend
+    to: frontend
+mac:
+  target: dmg
+  category: public.app-category.sports
+  # sin firmar por ahora — ver docs/MODO_SEDE.md (sección firma de código)
+  identity: null
