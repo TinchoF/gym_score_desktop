@@ -48,7 +48,13 @@ El primer arranque en cada máquina descarga el binario de `mongod`
 Sin firma de código, macOS pide **clic derecho → Abrir** la primera vez. Ver la sección
 "Firma de código" en `../GymScore/docs/MODO_SEDE.md`.
 
+## Publicar una versión
+
+El `.dmg` se distribuye como asset de un [GitHub Release](https://github.com/TinchoF/gym_score_desktop/releases)
+público — el botón de descarga en la web app apunta siempre a `.../releases/latest/download/...`.
+Ver **[RELEASING.md](RELEASING.md)** para los pasos.
+
 ## Estado
 
-MVP scaffold — **no probado en runtime todavía** (falta `npm install` de Electron +
-correr en una Mac con pantalla). Ver checklist Fase 1 en `MODO_SEDE.md`.
+Fase 1 (MVP) funcionando: probado en runtime, `v0.1.0` publicado y descargable desde el panel de
+super-admin de la web. Ver el checklist completo en `../GymScore/docs/MODO_SEDE.md`.
