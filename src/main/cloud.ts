@@ -115,6 +115,17 @@ export async function getPending(): Promise<any[]> {
   );
 }
 
+/** Borra la copia local de una institución (tras finalizar / forzar desbloqueo). */
+export async function discardLocal(institutionId: string): Promise<any> {
+  return j(
+    await fetch(`${LOCAL_API_URL}/api/offline-local/discard`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-offline-secret': localSecret() },
+      body: JSON.stringify({ institutionId }),
+    }),
+  );
+}
+
 // --- flujos completos ---
 
 /**

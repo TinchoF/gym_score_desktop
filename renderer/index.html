@@ -14,23 +14,10 @@
     <div id="statusStrip" class="strip" hidden></div>
   </header>
 
-  <nav class="steps" id="stepsNav" hidden>
-    <button data-step="conectar" class="active">1 · Conectar</button>
-    <button data-step="institucion">2 · Descargar</button>
-    <button data-step="servir">3 · Servir</button>
-    <button data-step="sincronizar">4 · Sincronizar</button>
-  </nav>
-
-  <div id="pendingBar" class="pending" hidden>
-    <span id="pendingText"></span>
-    <button id="btnGoSync">Ir a sincronizar</button>
-  </div>
-
   <main>
-    <!-- 1 -->
-    <section id="conectar" class="step active">
-      <h2>Conectar a la nube</h2>
-      <p class="muted">Login de <strong>super-admin</strong>. Necesitás internet solo para este paso y para sincronizar al final.</p>
+    <!-- LOGIN -->
+    <section id="viewLogin" class="view active">
+      <h2>Conectar</h2>
       <label>Usuario <input id="user" type="text" autocomplete="username" placeholder="usuario de super-admin" /></label>
       <label>Contraseña <input id="pass" type="password" autocomplete="current-password" /></label>
       <label class="inline"><input id="remember" type="checkbox" /> Recordar en esta laptop</label>
@@ -41,72 +28,90 @@
       <p id="loginMsg" class="msg"></p>
     </section>
 
-    <!-- 2 -->
-    <section id="institucion" class="step">
-      <h2>Descargar datos y bloquear</h2>
-      <p class="muted">
-        Hacé esto <strong>con internet, justo antes de ir a la sede</strong>. Baja el estado
-        <strong>actual</strong> de la institución a esta laptop y bloquea su edición online hasta
-        que sincronices al final. Nada de servir datos viejos: lo que se sirve es lo que bajás acá.
-      </p>
-      <select id="instSelect"></select>
-      <label>Etiqueta de esta laptop (opcional)
-        <input id="deviceLabel" type="text" placeholder="ej: Notebook mesa de control" />
-      </label>
-      <button id="btnPrepare" class="primary">Descargar datos y bloquear</button>
-      <p id="prepareMsg" class="msg"></p>
+    <!-- LISTA DE INSTITUCIONES -->
+    <section id="viewList" class="view">
+      <div id="servePanel" class="serve-panel">
+        <button id="btnServe" class="big">SERVIR EN LA RED</button>
+        <div id="serveInfo" hidden>
+          <div class="serve-cols">
+            <img id="qr" alt="QR de acceso" />
+            <div>
+              <p>Los jueces entran a:</p>
+              <p class="url" id="serveUrl"></p>
+              <p class="muted">o por IP: <span id="serveIp" class="url small"></span></p>
+              <p class="muted" id="serveScope"></p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="list-head">
+        <h2>Instituciones</h2>
+        <button id="btnRefresh" class="ghost">↻ Actualizar</button>
+      </div>
+      <p id="listMsg" class="msg"></p>
+      <ul id="instList" class="inst-list"></ul>
     </section>
 
-    <!-- 3 -->
-    <section id="servir" class="step">
-      <h2>Servir en la red local</h2>
-      <button id="btnServe" class="big">SERVIR</button>
-      <div id="serveInfo" hidden>
-        <img id="qr" alt="QR de acceso" />
-        <p>Los jueces deben entrar a:</p>
-        <p class="url" id="serveUrl"></p>
-        <p class="muted">Si no abre, probá con: <span id="serveIp" class="url small"></span></p>
-      </div>
-    </section>
+    <!-- ADMINISTRAR UNA INSTITUCIÓN -->
+    <section id="viewManage" class="view">
+      <button id="btnBack" class="ghost">← Volver a la lista</button>
+      <h2 id="manageName"></h2>
+      <p id="manageState" class="state-banner"></p>
 
-    <!-- 4 -->
-    <section id="sincronizar" class="step">
-      <h2>Sincronizar a la nube</h2>
-      <p class="muted">
-        Necesitás internet. Sube todo lo hecho en la jornada. Podés sincronizar varias veces
-        (ej. en un recreo). <strong>"Sincronizar y finalizar"</strong> hace el último pase y recién
-        ahí libera el candado online — es la única forma de desbloquear.
-      </p>
-      <p id="syncTarget" class="muted"></p>
-      <div class="row">
-        <button id="btnCheck" class="ghost">Ver qué cambió</button>
-        <button id="btnSync">Sincronizar (seguir en modo sede)</button>
-        <button id="btnFinalize" class="primary">Sincronizar y finalizar</button>
+      <!-- online -->
+      <div id="actOnline" class="acts" hidden>
+        <p class="muted">
+          Baja el estado <strong>actual</strong> de la institución a esta laptop y la bloquea online
+          hasta que sincronices. Hacelo con internet, antes de ir a la sede.
+        </p>
+        <label>Etiqueta de esta laptop (opcional)
+          <input id="deviceLabel" type="text" placeholder="ej: Notebook mesa de control" />
+        </label>
+        <button id="btnPrepare" class="primary">Descargar y poner en modo sede</button>
       </div>
-      <pre id="syncResult" class="result"></pre>
+
+      <!-- en modo sede acá -->
+      <div id="actSede" class="acts" hidden>
+        <div class="row">
+          <button id="btnCheck" class="ghost">Ver qué cambió</button>
+          <button id="btnSync">Sincronizar (seguir en modo sede)</button>
+          <button id="btnFinalize" class="primary">Sincronizar y finalizar</button>
+        </div>
+        <details>
+          <summary>Algo salió mal — forzar desbloqueo</summary>
+          <p class="muted">
+            Libera el candado <strong>sin sincronizar</strong> → se pierde lo de la jornada que no
+            haya llegado a la nube. Solo si sincronizar es imposible.
+          </p>
+          <button id="btnForce" class="danger">Forzar desbloqueo (descartar la jornada)</button>
+        </details>
+      </div>
+
+      <!-- en otra laptop -->
+      <div id="actOther" class="acts" hidden></div>
+
+      <!-- copia local sin candado -->
+      <div id="actStale" class="acts" hidden>
+        <p class="muted">
+          Esta institución ya está <strong>desbloqueada online</strong> (se finalizó, quizás desde otra
+          laptop). La copia en esta laptop quedó vieja.
+        </p>
+        <button id="btnDiscard" class="danger">Descartar copia local</button>
+      </div>
 
       <div id="conflictBox" class="conflict" hidden>
         <h3>Se editaron datos en la nube durante la jornada</h3>
-        <p class="muted">
-          Alguien cambió información online mientras la institución estaba en modo sede.
-          Elegí qué versión conservar:
-        </p>
+        <p class="muted">Elegí qué versión conservar:</p>
         <ul id="conflictList"></ul>
         <div class="row">
           <button id="btnResolveVenue" class="primary">La sede tiene razón — pisar la nube</button>
           <button id="btnResolveCloud">Mantener la nube en estos, sincronizar el resto</button>
-          <button id="btnResolveCancel" class="ghost">Cancelar — lo reviso a mano</button>
+          <button id="btnResolveCancel" class="ghost">Cancelar</button>
         </div>
       </div>
 
-      <details>
-        <summary>Algo salió mal — forzar desbloqueo</summary>
-        <p class="muted">
-          Libera el candado <strong>sin sincronizar</strong> → se pierde todo lo de la jornada que no
-          haya llegado a la nube. Usar solo si la sincronización es imposible.
-        </p>
-        <button id="btnUnlock" class="danger">Forzar desbloqueo (descartar datos)</button>
-      </details>
+      <pre id="report" class="result"></pre>
     </section>
   </main>
 

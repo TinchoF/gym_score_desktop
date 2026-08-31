@@ -1,92 +1,51 @@
 /* global window, document, alert, confirm */
-// Envuelto en IIFE: `contextBridge` expone `window.api` como propiedad NO configurable,
-// y un `const api` a nivel de script clásico colisiona con eso ("Identifier 'api' has
-// already been declared"). Dentro de una función no hay colisión.
+// IIFE: `const api = window.api` a nivel de script clásico colisiona con la
+// propiedad no-configurable que crea contextBridge.
 (function () {
   const api = window.api;
-  const state = { token: null, role: null, institutionId: null, institutions: [] };
-
   if (!api) {
     document.body.innerHTML =
-      '<p style="padding:24px;color:#b23">Error interno: el puente con la app no cargó (preload). Reiniciá la app.</p>';
+      '<p style="padding:24px;color:#b23">Error interno: el puente con la app no cargó. Reiniciá.</p>';
     return;
   }
-
   window.addEventListener('unhandledrejection', (e) => console.error('unhandledrejection', e.reason));
 
   const $ = (s) => document.querySelector(s);
-  const pill = (label, on) => `<span class="pill ${on ? 'on' : 'off'}">${label}</span>`;
+  const $$ = (s) => Array.from(document.querySelectorAll(s));
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString('es-AR') : '');
+  const fmtDateTime = (iso) => (iso ? new Date(iso).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) : '');
 
-  // Sin login, lo único disponible es la pantalla de conectar.
-  const show = (name) => {
-    if (!state.token && name !== 'conectar') return;
-    document.querySelectorAll('.step').forEach((el) => el.classList.toggle('active', el.id === name));
-    document.querySelectorAll('.steps button').forEach((b) => b.classList.toggle('active', b.dataset.step === name));
-  };
-  document.querySelectorAll('.steps button').forEach((b) => b.addEventListener('click', () => show(b.dataset.step)));
+  const state = { token: null, institutions: [], localPending: new Set(), localPendingData: [], managing: null };
 
+  const show = (view) => $$('.view').forEach((el) => el.classList.toggle('active', el.id === view));
+
+  // ---------- estado ----------
   let statusTimer = null;
   async function refreshStatus() {
     if (!state.token) return;
     const r = await api.getStatus();
     if (!r.ok) return;
     const s = r.data;
-    $('#statusStrip').innerHTML = [
-      pill('En la red', s.advertising),
-      pill('Backend', s.backendUp),
-      pill('Mongo', s.mongoUp),
-    ].join('');
-  }
-
-  // --- jornada sin sincronizar (solo tras login: lee la DB local, arranca el stack) ---
-  async function checkPending() {
-    if (!state.token) return;
-    const r = await api.getPending();
-    if (!r.ok || !Array.isArray(r.data) || r.data.length === 0) {
-      $('#pendingBar').hidden = true;
-      state.pending = null;
-      return;
-    }
-    const inst = r.data[0];
-    state.pending = inst;
-    if (!state.institutionId) state.institutionId = inst._id;
-
-    const since = inst.offlineMode && inst.offlineMode.since
-      ? new Date(inst.offlineMode.since).toLocaleDateString('es-AR')
-      : null;
-    const synced = inst.offlineMode && inst.offlineMode.lastSyncAt;
-    $('#pendingText').textContent =
-      `🔒 Modo sede activo: ${inst.name}${since ? ` (desde ${since})` : ''}` +
-      (synced ? '' : ' — todavía sin sincronizar');
-    $('#syncTarget').textContent = `Institución: ${inst.name}`;
-    $('#pendingBar').hidden = false;
-  }
-  $('#btnGoSync').addEventListener('click', () => show('sincronizar'));
-
-  // Cuando el login tiene éxito: recién ahí aparece todo lo demás.
-  async function onLoggedIn() {
-    $('#stepsNav').hidden = false;
     $('#statusStrip').hidden = false;
-    statusTimer = statusTimer || setInterval(refreshStatus, 3000);
-    await refreshStatus();
-    await checkPending();
+    $('#statusStrip').innerHTML =
+      `<span class="pill ${s.advertising ? 'on' : 'off'}">En la red</span>` +
+      `<span class="pill ${s.backendUp ? 'on' : 'off'}">Backend</span>` +
+      `<span class="pill ${s.mongoUp ? 'on' : 'off'}">Mongo</span>`;
   }
 
-  // --- 1. login ---
+  // ---------- login ----------
   async function doLogin() {
     $('#loginMsg').textContent = 'Conectando…';
     const r = await api.login($('#user').value.trim(), $('#pass').value, $('#remember').checked);
-    if (!r.ok) {
-      $('#loginMsg').textContent = `Error: ${r.error}`;
-      return;
-    }
+    if (!r.ok) { $('#loginMsg').textContent = `Error: ${r.error}`; return; }
     state.token = r.data.token;
-    state.role = r.data.role;
-    $('#loginMsg').textContent = 'Conectado ✓';
+    $('#loginMsg').textContent = '';
     $('#btnForget').hidden = !$('#remember').checked;
-    await onLoggedIn();
-    await loadInstitutions();
-    show(state.pending ? 'sincronizar' : 'institucion');
+    statusTimer = statusTimer || setInterval(refreshStatus, 3000);
+    await refreshStatus();
+    await loadList();
+    show('viewList');
   }
   $('#btnLogin').addEventListener('click', doLogin);
   $('#pass').addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
@@ -96,8 +55,6 @@
     $('#btnForget').hidden = true;
     $('#loginMsg').textContent = 'Credenciales borradas de esta laptop.';
   });
-
-  // pre-cargar credenciales guardadas
   (async () => {
     const saved = await api.loadCreds();
     if (saved && saved.ok && saved.data) {
@@ -109,113 +66,179 @@
     }
   })();
 
-  async function loadInstitutions() {
-    const r = await api.listInstitutions(state.token);
-    if (!r.ok) {
-      $('#prepareMsg').textContent = `No se pudo listar instituciones: ${r.error}`;
-      return;
-    }
-    state.institutions = r.data;
-    $('#instSelect').innerHTML = r.data
-      .map((i) => `<option value="${i._id}">${i.name}${i.offlineMode && i.offlineMode.active ? ' — (en modo sede)' : ''}</option>`)
-      .join('');
+  // ---------- lista de instituciones ----------
+  const BADGES = {
+    online: ['🟢', 'Online', 'ok'],
+    'sede-aca': ['🔒', 'En modo sede · esta laptop', 'warn'],
+    'sede-otra': ['🔒', 'En modo sede · otra laptop', 'muted'],
+    'local-stale': ['⚠️', 'Copia local vieja', 'danger'],
+  };
+
+  function computeState(inst) {
+    const cloudLocked = !!(inst.offlineMode && inst.offlineMode.active);
+    const localHas = state.localPending.has(String(inst._id));
+    if (cloudLocked && localHas) return 'sede-aca';
+    if (cloudLocked && !localHas) return 'sede-otra';
+    if (!cloudLocked && localHas) return 'local-stale';
+    return 'online';
   }
 
-  // --- 2. preparar ---
-  $('#btnPrepare').addEventListener('click', async () => {
-    state.institutionId = $('#instSelect').value;
-    if (!state.institutionId) return;
-    $('#prepareMsg').textContent = 'Bloqueando y descargando… (puede tardar)';
-    const r = await api.prepare(state.token, state.institutionId, $('#deviceLabel').value.trim() || undefined);
-    if (!r.ok) {
-      $('#prepareMsg').textContent = `Error: ${r.error}`;
-      return;
+  async function loadList() {
+    $('#listMsg').textContent = 'Cargando…';
+    const [instR, pendR] = await Promise.all([api.listInstitutions(state.token), api.getPending()]);
+    state.localPendingData = pendR.ok && Array.isArray(pendR.data) ? pendR.data : [];
+    state.localPending = new Set(state.localPendingData.map((i) => String(i._id)));
+
+    if (!instR.ok) {
+      $('#listMsg').textContent = 'Sin conexión a la nube — mostrando solo lo que está en esta laptop.';
+      state.institutions = state.localPendingData;
+    } else {
+      $('#listMsg').textContent = '';
+      state.institutions = instR.data;
     }
+    renderList();
+  }
+
+  function renderList() {
+    $('#instList').innerHTML = state.institutions
+      .map((inst) => {
+        const st = computeState(inst);
+        const [icon, text, cls] = BADGES[st];
+        const om = inst.offlineMode || {};
+        const extra = [
+          om.since ? `desde ${fmtDate(om.since)}` : '',
+          om.deviceLabel ? om.deviceLabel : '',
+        ].filter(Boolean).join(' · ');
+        return `<li>
+          <div><b>${esc(inst.name)}</b><br>
+          <span class="badge ${cls}">${icon} ${text}</span>
+          ${extra ? `<span class="muted"> ${esc(extra)}</span>` : ''}</div>
+          <button data-id="${inst._id}">Administrar</button>
+        </li>`;
+      })
+      .join('') || '<li class="muted">No hay instituciones.</li>';
+    $$('#instList button[data-id]').forEach((b) => {
+      b.onclick = () => openManage(state.institutions.find((i) => String(i._id) === b.dataset.id));
+    });
+  }
+  $('#btnRefresh').addEventListener('click', loadList);
+
+  // ---------- administrar una institución ----------
+  function openManage(inst) {
+    state.managing = inst;
+    $('#manageName').textContent = inst.name;
+    renderManage();
+    show('viewManage');
+  }
+  $('#btnBack').addEventListener('click', () => { show('viewList'); loadList(); });
+
+  function renderManage() {
+    const inst = state.managing;
+    const st = computeState(inst);
+    const om = inst.offlineMode || {};
+    ['actOnline', 'actSede', 'actOther', 'actStale'].forEach((id) => ($('#' + id).hidden = true));
+    $('#conflictBox').hidden = true;
+    $('#report').textContent = '';
+
+    if (st === 'online') {
+      $('#manageState').textContent = 'Online — editable desde la web.';
+      $('#manageState').className = 'state-banner ok';
+      $('#actOnline').hidden = false;
+    } else if (st === 'sede-aca') {
+      $('#manageState').textContent =
+        `En modo sede desde ${fmtDate(om.since)}` +
+        (om.lastSyncAt ? ` · última sync ${fmtDateTime(om.lastSyncAt)}` : ' · sin sincronizar aún') + '.';
+      $('#manageState').className = 'state-banner warn';
+      $('#actSede').hidden = false;
+    } else if (st === 'sede-otra') {
+      $('#manageState').textContent = 'En modo sede — otra laptop.';
+      $('#manageState').className = 'state-banner muted';
+      $('#actOther').textContent =
+        `Está en modo sede en otra laptop${om.deviceLabel ? ` (${om.deviceLabel})` : ''}` +
+        ` desde ${fmtDate(om.since)}. No podés operar desde acá hasta que esa laptop sincronice y finalice.`;
+      $('#actOther').hidden = false;
+    } else {
+      $('#manageState').textContent = 'Ya desbloqueada online — la copia local quedó vieja.';
+      $('#manageState').className = 'state-banner danger';
+      $('#actStale').hidden = false;
+    }
+  }
+
+  $('#btnPrepare').addEventListener('click', async () => {
+    const inst = state.managing;
+    $('#report').textContent = 'Bloqueando y descargando… (puede tardar)';
+    const r = await api.prepare(state.token, inst._id, $('#deviceLabel').value.trim() || undefined);
+    if (!r.ok) { $('#report').textContent = `Error: ${r.error}`; return; }
     const c = (r.data.imported && r.data.imported.counts) || {};
-    $('#prepareMsg').textContent = `Listo ✓  ${c.gymnasts || 0} gimnastas, ${c.tournaments || 0} torneos, ${c.judges || 0} jueces.`;
-    const inst = state.institutions.find((i) => i._id === state.institutionId);
-    $('#syncTarget').textContent = inst ? `Institución: ${inst.name}` : '';
-    await checkPending();
-    show('servir');
+    $('#report').textContent = `Listo ✓  ${c.gymnasts || 0} gimnastas, ${c.tournaments || 0} torneos, ${c.judges || 0} jueces.`;
+    await loadList();
+    state.managing = state.institutions.find((i) => String(i._id) === String(inst._id)) || inst;
+    renderManage();
   });
 
-  // --- 3. servir ---
-  $('#btnServe').addEventListener('click', async () => {
-    const st = await api.getStatus();
-    if (st.ok && st.data.advertising) {
-      await api.stopServing();
-      $('#btnServe').textContent = 'SERVIR';
-      $('#serveInfo').hidden = true;
-    } else {
-      $('#btnServe').textContent = 'Iniciando…';
-      const r = await api.startServing();
-      if (!r.ok) {
-        $('#btnServe').textContent = 'SERVIR';
-        alert('Error al servir: ' + r.error);
+  $('#btnCheck').addEventListener('click', () => runSync({ dryRun: true }));
+  $('#btnSync').addEventListener('click', () => runSync({ finalize: false }));
+  $('#btnFinalize').addEventListener('click', () => runSync({ finalize: true }));
+
+  async function runSync({ finalize, dryRun, conflictResolution }) {
+    const inst = state.managing;
+    $('#conflictBox').hidden = true;
+    $('#report').textContent = dryRun ? 'Verificando…' : 'Sincronizando…';
+    const r = dryRun
+      ? await api.previewChanges(state.token, inst._id)
+      : await api.sync(state.token, inst._id, !!finalize, conflictResolution);
+    if (!r.ok) {
+      if (r.body && r.body.code === 'CONFLICTS') {
+        $('#report').textContent = `${(r.body.conflicts || []).length} conflicto(s) — elegí abajo.`;
+        renderConflicts(r.body.conflicts, finalize);
         return;
       }
-      $('#serveUrl').textContent = r.data.mdnsUrl;
-      $('#serveIp').textContent = r.data.url;
-      const qr = await api.makeQr(r.data.mdnsUrl);
-      if (qr.ok) $('#qr').src = qr.data;
-      $('#serveInfo').hidden = false;
-      $('#btnServe').textContent = 'DETENER';
+      $('#report').textContent = `Error: ${r.error}`;
+      return;
     }
-    refreshStatus();
+    $('#report').textContent = renderReport(r.data, { finalize, dryRun });
+    if (!dryRun && finalize && r.data.ok) {
+      await api.discardLocal(inst._id);
+      await loadList();
+      setTimeout(() => show('viewList'), 1500);
+    }
+  }
+
+  $('#btnForce').addEventListener('click', async () => {
+    if (!confirm('¿Forzar desbloqueo? Se descarta TODO lo de la jornada que no haya llegado a la nube.')) return;
+    await api.unlock(state.token, state.managing._id);
+    await api.discardLocal(state.managing._id);
+    await loadList();
+    show('viewList');
+  });
+  $('#btnDiscard').addEventListener('click', async () => {
+    if (!confirm('¿Descartar la copia local de esta institución?')) return;
+    await api.discardLocal(state.managing._id);
+    await loadList();
+    show('viewList');
   });
 
-  // --- 4. sincronizar ---
+  // ---------- conflictos ----------
   function renderConflicts(conflicts, finalize) {
     $('#conflictList').innerHTML = (conflicts || [])
       .map((c) => {
         const fields = (c.changedFields || [])
-          .map((f) => `${f}: nube = ${JSON.stringify(c.cloud[f])} · sede = ${c.local ? JSON.stringify(c.local[f]) : '—'}`)
+          .map((f) => `${esc(f)}: nube = ${esc(JSON.stringify(c.cloud[f]))} · sede = ${c.local ? esc(JSON.stringify(c.local[f])) : '—'}`)
           .join('<br>');
-        return `<li><b>${c.label}</b> <span class="muted">(${c.collection})</span><br>${fields || 'cambió'}</li>`;
+        return `<li><b>${esc(c.label)}</b> <span class="muted">(${esc(c.collection)})</span><br>${fields || 'cambió'}</li>`;
       })
       .join('');
     $('#conflictBox').hidden = false;
-    $('#btnResolveVenue').onclick = () => { $('#conflictBox').hidden = true; doSync(finalize, 'overwrite'); };
-    $('#btnResolveCloud').onclick = () => { $('#conflictBox').hidden = true; doSync(finalize, 'keepCloud'); };
+    $('#btnResolveVenue').onclick = () => runSync({ finalize, conflictResolution: 'overwrite' });
+    $('#btnResolveCloud').onclick = () => runSync({ finalize, conflictResolution: 'keepCloud' });
     $('#btnResolveCancel').onclick = () => {
       $('#conflictBox').hidden = true;
-      $('#syncResult').textContent = 'Cancelado. Arreglá los datos en la web y volvé a sincronizar.';
+      $('#report').textContent = 'Cancelado. Arreglá los datos en la web y volvé a verificar.';
     };
   }
 
-  async function doSync(finalize, conflictResolution) {
-    if (!state.token) {
-      $('#syncResult').textContent = 'Conectate primero (paso 1 · Conectar) para sincronizar.';
-      show('conectar');
-      return;
-    }
-    if (!state.institutionId) {
-      $('#syncResult').textContent = 'No hay ninguna jornada para sincronizar en esta laptop.';
-      return;
-    }
-    $('#conflictBox').hidden = true;
-    $('#syncResult').textContent = 'Sincronizando…';
-    const r = await api.sync(state.token, state.institutionId, finalize, conflictResolution);
-    if (!r.ok) {
-      if (r.body && r.body.code === 'CONFLICTS') {
-        $('#syncResult').textContent = `${(r.body.conflicts || []).length} conflicto(s) — elegí abajo.`;
-        renderConflicts(r.body.conflicts, finalize);
-        return;
-      }
-      $('#syncResult').textContent = `Error: ${r.error}\n${JSON.stringify(r.body || {}, null, 2)}`;
-      return;
-    }
-    $('#syncResult').textContent = renderReport(r.data, { finalize, dryRun: false });
-    if (finalize) {
-      $('#btnSync').disabled = true;
-      $('#btnFinalize').disabled = true;
-    }
-    await checkPending();
-  }
-
-  const COL_LABELS = {
-    tournaments: 'torneos', gymnasts: 'gimnastas', judges: 'jueces', scores: 'puntajes', rotations: 'rotaciones',
-  };
+  // ---------- reporte del diff ----------
+  const COL_LABELS = { tournaments: 'torneos', gymnasts: 'gimnastas', judges: 'jueces', scores: 'puntajes', rotations: 'rotaciones' };
   function renderReport(d, { finalize, dryRun }) {
     const lines = [];
     for (const [col, ch] of Object.entries(d.changes || {})) {
@@ -239,34 +262,39 @@
     const kept = (d.keptCloud || []).length
       ? `Se mantiene la versión de la nube en ${d.keptCloud.length} doc(s).\n`
       : d.resolution === 'overwrite' ? 'La sede pisa los cambios de la nube.\n' : '';
-    const conf = (d.conflicts || []).length
+    const conf = (d.conflicts || []).length && !d.resolution
       ? `⚠️ ${d.conflicts.length} conflicto(s) con cambios hechos en la nube — se resuelven al sincronizar.\n`
       : '';
 
     let head;
     if (dryRun) head = d.upToDate ? '✓ Al día — no hay nada para sincronizar.' : 'Cambios pendientes de sincronizar:';
-    else if (finalize) head = '✓ Finalizado — la institución quedó desbloqueada online.';
-    else if (d.upToDate) head = '✓ Todo sincronizado — no había cambios pendientes.';
+    else if (finalize) head = '✓ Finalizado — la institución quedó online de nuevo.';
+    else if (d.upToDate) head = '✓ Sincronizado — no había cambios.';
     else head = '✓ Sincronizado (sigue en modo sede).';
 
     return head + '\n' + conf + kept + (lines.length ? lines.join('\n') + '\n' + detailBlocks : (dryRun ? '' : 'Sin cambios.'));
   }
 
-  $('#btnSync').addEventListener('click', () => doSync(false));
-  $('#btnFinalize').addEventListener('click', () => doSync(true));
-  $('#btnCheck').addEventListener('click', async () => {
-    if (!state.token || !state.institutionId) return;
-    $('#syncResult').textContent = 'Verificando…';
-    const r = await api.previewChanges(state.token, state.institutionId);
-    $('#syncResult').textContent = r.ok
-      ? renderReport(r.data, { finalize: false, dryRun: true })
-      : `Error: ${r.error}`;
-  });
-  $('#btnUnlock').addEventListener('click', async () => {
-    if (!state.token) { show('conectar'); return; }
-    if (!confirm('¿Forzar desbloqueo? Se descarta TODO lo de la jornada que no haya llegado a la nube.')) return;
-    const r = await api.unlock(state.token, state.institutionId);
-    $('#syncResult').textContent = r.ok ? 'Desbloqueada ✓ (sin sincronizar)' : `Error: ${r.error}`;
-    await checkPending();
+  // ---------- servir ----------
+  $('#btnServe').addEventListener('click', async () => {
+    const st = await api.getStatus();
+    if (st.ok && st.data.advertising) {
+      await api.stopServing();
+      $('#btnServe').textContent = 'SERVIR EN LA RED';
+      $('#serveInfo').hidden = true;
+    } else {
+      $('#btnServe').textContent = 'Iniciando…';
+      const r = await api.startServing();
+      if (!r.ok) { $('#btnServe').textContent = 'SERVIR EN LA RED'; alert('Error al servir: ' + r.error); return; }
+      $('#serveUrl').textContent = r.data.mdnsUrl;
+      $('#serveIp').textContent = r.data.url;
+      const qr = await api.makeQr(r.data.mdnsUrl);
+      if (qr.ok) $('#qr').src = qr.data;
+      const served = state.localPendingData.map((i) => i.name).join(', ');
+      $('#serveScope').textContent = served ? `Sirviendo: ${served}` : '⚠️ No hay instituciones descargadas.';
+      $('#serveInfo').hidden = false;
+      $('#btnServe').textContent = 'DETENER';
+    }
+    refreshStatus();
   });
 })();

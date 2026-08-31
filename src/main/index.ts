@@ -126,6 +126,10 @@ handle('cloud:preview', async (token: string, institutionId: string) => {
   await ensureBackend();
   return cloud.previewChanges(token, institutionId);
 });
+handle('local:discard', async (institutionId: string) => {
+  await ensureBackend();
+  return cloud.discardLocal(institutionId);
+});
 handle('cloud:institutions', (token: string) => cloud.listInstitutions(token));
 handle('cloud:prepare', async (token: string, institutionId: string, deviceLabel?: string) => {
   await ensureBackend(); // el import va al backend local — tiene que estar arriba
