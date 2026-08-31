@@ -4,9 +4,39 @@
  */
 import { CLOUD_API_URL, LOCAL_API_URL, localSecret } from './config';
 
+/**
+ * fetch a la nube con timeout + timing en el log. Un Heroku "eco" dyno dormido
+ * puede tardar 10-20s en despertar en el primer request — no es un cuelgue, pero
+ * sin esto no había forma de distinguirlo de un problema real ni de darle un
+ * límite. 45s de margen (arranque de dyno + conexión a Mongo Atlas si también
+ * estaba fría).
+ */
+const CLOUD_TIMEOUT_MS = 45000;
+// bundle/sync mueven la institución entera — les damos más margen que a un login.
+const CLOUD_TIMEOUT_MS_LONG = 120000;
+
+async function cloudFetch(url: string, init?: RequestInit, timeoutMs = CLOUD_TIMEOUT_MS): Promise<Response> {
+  const start = Date.now();
+  console.log(`[cloud] → ${init?.method || 'GET'} ${url}`);
+  try {
+    const res = await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+    console.log(`[cloud] ← ${res.status} ${url} (${Date.now() - start}ms)`);
+    return res;
+  } catch (err: any) {
+    const ms = Date.now() - start;
+    if (err?.name === 'TimeoutError') {
+      throw new Error(
+        `La nube no respondió en ${Math.round(timeoutMs / 1000)}s (${url}). ` +
+          `¿Hay internet? Si el servidor estaba "dormido" puede que ya haya despertado — reintentá.`,
+      );
+    }
+    console.log(`[cloud] ✗ ${url} (${ms}ms): ${err?.message}`);
+    throw err;
+  }
+}
+
 async function j<T>(res: Response): Promise<T> {
   const body = await res.json().catch(() => ({}));
-  console.log(`[cloud] ${res.status} ${res.url}`);
   if (!res.ok) {
     const err: any = new Error((body as any)?.error || `HTTP ${res.status}`);
     err.status = res.status;
@@ -26,7 +56,7 @@ async function j<T>(res: Response): Promise<T> {
 export async function login(username: string, password: string): Promise<{ token: string; role: string }> {
   const clean = username.trim().replace(/^###/, '');
   const data = await j<any>(
-    await fetch(`${CLOUD_API_URL}/api/auth/login`, {
+    await cloudFetch(`${CLOUD_API_URL}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: clean, password, role: 'super-admin' }),
@@ -36,7 +66,7 @@ export async function login(username: string, password: string): Promise<{ token
 }
 
 export async function listInstitutions(token: string): Promise<any[]> {
-  return j(await fetch(`${CLOUD_API_URL}/api/institution`, { headers: { Authorization: `Bearer ${token}` } }));
+  return j(await cloudFetch(`${CLOUD_API_URL}/api/institution`, { headers: { Authorization: `Bearer ${token}` } }));
 }
 
 export async function lockInstitution(
@@ -46,7 +76,7 @@ export async function lockInstitution(
   force = false,
 ) {
   return j(
-    await fetch(`${CLOUD_API_URL}/api/offline/institutions/${institutionId}/lock`, {
+    await cloudFetch(`${CLOUD_API_URL}/api/offline/institutions/${institutionId}/lock`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ deviceLabel, force }),
@@ -56,7 +86,7 @@ export async function lockInstitution(
 
 export async function unlockInstitution(token: string, institutionId: string) {
   return j(
-    await fetch(`${CLOUD_API_URL}/api/offline/institutions/${institutionId}/unlock`, {
+    await cloudFetch(`${CLOUD_API_URL}/api/offline/institutions/${institutionId}/unlock`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
     }),
@@ -65,9 +95,11 @@ export async function unlockInstitution(token: string, institutionId: string) {
 
 async function getBundle(token: string, institutionId: string): Promise<any> {
   return j(
-    await fetch(`${CLOUD_API_URL}/api/offline/institutions/${institutionId}/bundle`, {
-      headers: { Authorization: `Bearer ${token}` },
-    }),
+    await cloudFetch(
+      `${CLOUD_API_URL}/api/offline/institutions/${institutionId}/bundle`,
+      { headers: { Authorization: `Bearer ${token}` } },
+      CLOUD_TIMEOUT_MS_LONG,
+    ),
   );
 }
 
@@ -78,11 +110,15 @@ async function pushSync(
   extra: { finalize?: boolean; conflictResolution?: 'overwrite' | 'keepCloud'; dryRun?: boolean },
 ): Promise<any> {
   return j(
-    await fetch(`${CLOUD_API_URL}/api/offline/institutions/${institutionId}/sync`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ ...payload, ...extra }),
-    }),
+    await cloudFetch(
+      `${CLOUD_API_URL}/api/offline/institutions/${institutionId}/sync`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ ...payload, ...extra }),
+      },
+      CLOUD_TIMEOUT_MS_LONG,
+    ),
   );
 }
 

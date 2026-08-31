@@ -36,7 +36,7 @@
 
   // ---------- login ----------
   async function doLogin() {
-    $('#loginMsg').textContent = 'Conectando…';
+    $('#loginMsg').textContent = 'Conectando… (puede tardar unos segundos si el servidor estaba inactivo)';
     const r = await api.login($('#user').value.trim(), $('#pass').value, $('#remember').checked);
     if (!r.ok) { $('#loginMsg').textContent = `Error: ${r.error}`; return; }
     state.token = r.data.token;
