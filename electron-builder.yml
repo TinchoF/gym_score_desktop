@@ -2,6 +2,7 @@ appId: ar.com.gymscore.desktop
 productName: GymScore Modo Sede
 directories:
   output: release
+  buildResources: build   # build/icon.png → electron-builder genera el .icns
 files:
   - dist/**/*
   - renderer/**/*

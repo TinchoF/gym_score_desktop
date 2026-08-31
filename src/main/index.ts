@@ -14,6 +14,7 @@ function createWindow() {
     width: 900,
     height: 680,
     title: 'GymScore — Modo Sede',
+    icon: path.join(__dirname, '..', '..', 'build', 'icon.png'),
     webPreferences: { preload: preloadPath },
   });
   win.loadFile(path.join(__dirname, '..', '..', 'renderer', 'index.html'));
