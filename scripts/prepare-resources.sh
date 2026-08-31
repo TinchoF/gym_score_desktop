@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Actualiza (git pull) y compila el backend y el frontend de GymScore, y los copia
-# a resources/ para empaquetarlos dentro de la app Electron. Layout de repos hermanos:
+# a resources/ para empaquetarlos dentro de la app Electron. Layout de repos hermanos (los tres en ~/REPOS):
 #   REPOS/gym_score_be   REPOS/GymScore   REPOS/gym_score_desktop
 #
 #   SKIP_PULL=1 ./scripts/prepare-resources.sh   # no hacer git pull
