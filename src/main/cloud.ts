@@ -101,6 +101,15 @@ async function exportLocal(institutionId: string): Promise<any> {
   );
 }
 
+/** Instituciones cargadas localmente con una jornada sin sincronizar. Funciona sin internet. */
+export async function getPending(): Promise<any[]> {
+  return j(
+    await fetch(`${LOCAL_API_URL}/api/offline-local/pending`, {
+      headers: { 'x-offline-secret': localSecret() },
+    }),
+  );
+}
+
 // --- flujos completos ---
 
 /**

@@ -29,6 +29,13 @@ header h1 { font-size: 16px; margin: 0; }
 .pill.on { background: #dcebde; color: var(--ok); }
 .pill.off { background: #f0ece3; }
 
+.pending {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 20px; background: #fdf1e3; border-bottom: 1px solid #e9c9a3; color: #8a4b0a;
+  font-size: 13px; font-weight: 500;
+}
+.pending button { margin: 0; border-color: #8a4b0a; color: #8a4b0a; padding: 5px 12px; }
+
 nav.steps { display: flex; gap: 4px; padding: 10px 20px; border-bottom: 1px solid var(--rule); }
 nav.steps button {
   border: 0; background: transparent; padding: 6px 10px; border-radius: 6px;

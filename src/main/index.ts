@@ -47,6 +47,11 @@ app.whenReady().then(async () => {
         body: JSON.stringify(big),
       });
       console.log('[selftest] import 2MB:', large.status, large.status !== 413 ? '→ OK (no 413)' : '→ MAL (413)');
+
+      const pend = await fetch(`${getStatus().url}/api/offline-local/pending`, {
+        headers: { 'x-offline-secret': localSecret() },
+      });
+      console.log('[selftest] pending:', pend.status, pend.status === 200 ? '→ OK' : '→ MAL');
     } catch (err) {
       console.error('[selftest] FALLÓ:', err);
     } finally {
@@ -107,6 +112,10 @@ handle('cloud:login', async (username: string, password: string, remember?: bool
     clearCreds();
   }
   return result;
+});
+handle('local:pending', async () => {
+  await ensureBackend();
+  return cloud.getPending();
 });
 handle('cloud:institutions', (token: string) => cloud.listInstitutions(token));
 handle('cloud:prepare', async (token: string, institutionId: string, deviceLabel?: string) => {

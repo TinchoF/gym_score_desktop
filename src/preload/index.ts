@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('api', {
   stopServing: () => invoke('serve:stop'),
   loadCreds: () => invoke('creds:load'),
   clearCreds: () => invoke('creds:clear'),
+  getPending: () => invoke('local:pending'),
   login: (u: string, p: string, remember?: boolean) => invoke('cloud:login', u, p, remember),
   listInstitutions: (token: string) => invoke('cloud:institutions', token),
   prepare: (token: string, id: string, deviceLabel?: string) => invoke('cloud:prepare', token, id, deviceLabel),

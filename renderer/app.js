@@ -35,6 +35,27 @@
   setInterval(refreshStatus, 3000);
   refreshStatus();
 
+  // --- jornada sin sincronizar (datos locales, funciona sin internet) ---
+  async function checkPending() {
+    const r = await api.getPending();
+    if (!r.ok || !Array.isArray(r.data) || r.data.length === 0) {
+      $('#pendingBar').hidden = true;
+      return;
+    }
+    const inst = r.data[0];
+    state.pending = inst;
+    const since = inst.offlineMode && inst.offlineMode.since
+      ? new Date(inst.offlineMode.since).toLocaleDateString('es-AR')
+      : null;
+    $('#pendingText').textContent =
+      `⚠️ Jornada sin sincronizar: ${inst.name}${since ? ` (desde ${since})` : ''}`;
+    $('#pendingBar').hidden = false;
+    $('#syncTarget').textContent = `Institución: ${inst.name}`;
+    if (!state.institutionId) state.institutionId = inst._id;
+  }
+  checkPending();
+  $('#btnGoSync').addEventListener('click', () => show('sincronizar'));
+
   // --- 1. login ---
   async function doLogin() {
     $('#loginMsg').textContent = 'Conectando…';
@@ -95,6 +116,9 @@
     }
     const c = (r.data.imported && r.data.imported.counts) || {};
     $('#prepareMsg').textContent = `Listo ✓  ${c.gymnasts || 0} gimnastas, ${c.tournaments || 0} torneos, ${c.judges || 0} jueces.`;
+    const inst = state.institutions.find((i) => i._id === state.institutionId);
+    $('#syncTarget').textContent = inst ? `Institución: ${inst.name}` : '';
+    await checkPending();
     show('servir');
   });
 
@@ -125,6 +149,15 @@
 
   // --- 4. sincronizar ---
   async function doSync(finalize) {
+    if (!state.token) {
+      $('#syncResult').textContent = 'Conectate primero (paso 1 · Conectar) para sincronizar.';
+      show('conectar');
+      return;
+    }
+    if (!state.institutionId) {
+      $('#syncResult').textContent = 'No hay ninguna jornada para sincronizar en esta laptop.';
+      return;
+    }
     $('#syncResult').textContent = 'Sincronizando…';
     const r = await api.sync(state.token, state.institutionId, finalize);
     if (!r.ok) {
@@ -141,12 +174,15 @@
       `OK ✓ ${finalize ? '(finalizado, candado liberado)' : '(sigue en modo sede)'}\n` +
       `aplicados: ${JSON.stringify(d.applied)}\n` +
       (delLines ? `bajas a revisar:\n${delLines}` : 'sin bajas a revisar');
+    await checkPending();
   }
   $('#btnSync').addEventListener('click', () => doSync(false));
   $('#btnFinalize').addEventListener('click', () => doSync(true));
   $('#btnUnlock').addEventListener('click', async () => {
-    if (!confirm('¿Forzar desbloqueo? Se descarta lo no sincronizado.')) return;
+    if (!state.token) { show('conectar'); return; }
+    if (!confirm('¿Forzar desbloqueo? Se descarta TODO lo de la jornada que no haya llegado a la nube.')) return;
     const r = await api.unlock(state.token, state.institutionId);
-    $('#syncResult').textContent = r.ok ? 'Desbloqueada ✓' : `Error: ${r.error}`;
+    $('#syncResult').textContent = r.ok ? 'Desbloqueada ✓ (sin sincronizar)' : `Error: ${r.error}`;
+    await checkPending();
   });
 })();
