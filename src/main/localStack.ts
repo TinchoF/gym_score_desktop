@@ -3,13 +3,12 @@
  * OFFLINE_MODE + anuncio mDNS. Ver docs/MODO_SEDE.md en el repo del frontend.
  *
  * Modelo:
- *  - `ensureBackend()`  — arranca mongo + backend si no están (idempotente). Lo
- *    necesitan "Preparar", "Servir" y "Sincronizar".
- *  - `startAdvertising()` / `stopAdvertising()` — mDNS + powerSaveBlocker. Es lo
- *    que prende/apaga el botón SERVIR. El backend queda corriendo igual.
- *  - `shutdownAll()` — todo, al cerrar la app.
+ *  - `ensureBackend()`  — deja el stack (mongo + backend) arriba y SANO. Si el
+ *    backend murió o no llega a su mongo, reinicia todo limpio. Idempotente.
+ *  - `startAdvertising()` / `stopAdvertising()` — mDNS + powerSaveBlocker (botón SERVIR).
+ *  - `shutdownAll()` — todo abajo, al cerrar la app.
  */
-import { fork, ChildProcess } from 'child_process';
+import { fork, ChildProcess, execSync } from 'child_process';
 import { powerSaveBlocker } from 'electron';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { Bonjour } from 'bonjour-service';
@@ -20,8 +19,6 @@ import {
   localSecret,
   LOCAL_PORT,
   LOCAL_API_URL,
-  LOCAL_MONGO_PORT,
-  LOCAL_MONGO_URI,
   MDNS_NAME,
 } from './config';
 
@@ -49,31 +46,56 @@ export function getStatus(): StackStatus {
   };
 }
 
-async function waitForHealth(timeoutMs = 25000): Promise<void> {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    try {
-      const res = await fetch(`${LOCAL_API_URL}/api/institution/by-code/__healthcheck__`);
-      if (res.status < 500) return;
-    } catch {
-      /* todavía no levantó */
-    }
-    await new Promise((r) => setTimeout(r, 400));
+/** El backend responde Y puede consultar su base (404, no 500). */
+async function isHealthy(): Promise<boolean> {
+  try {
+    const res = await fetch(`${LOCAL_API_URL}/api/institution/by-code/__healthcheck__`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    return res.status === 404; // ruta ok + query a mongo ok
+  } catch {
+    return false;
   }
-  throw new Error('El backend local no respondió a tiempo');
 }
 
-/** Arranca mongo + backend si no están corriendo. Idempotente y con lock. */
+async function waitForHealth(timeoutMs = 30000): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (await isHealthy()) return;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  throw new Error('El backend local no arrancó bien (no llega a su base de datos)');
+}
+
+async function teardown(): Promise<void> {
+  if (backend) {
+    try { backend.kill('SIGTERM'); } catch { /* noop */ }
+    backend = null;
+  }
+  if (mongo) {
+    try { await mongo.stop(); } catch { /* noop */ }
+    mongo = null;
+  }
+  // Matar cualquier mongod zombie apuntando a NUESTRO dbPath (sesiones anteriores).
+  try {
+    execSync(`pkill -f ${JSON.stringify(mongoDataDir())}`, { stdio: 'ignore' });
+  } catch { /* no había ninguno */ }
+}
+
+/** Deja mongo + backend arriba y sano. Reinicia todo si algo está mal. Idempotente. */
 export async function ensureBackend(): Promise<void> {
-  if (backend && !backend.killed) return;
+  if (backend && !backend.killed && (await isHealthy())) return;
   if (starting) return starting;
 
   starting = (async () => {
-    if (!mongo) {
-      mongo = await MongoMemoryServer.create({
-        instance: { port: LOCAL_MONGO_PORT, dbPath: mongoDataDir(), storageEngine: 'wiredTiger' },
-      });
-    }
+    await teardown();
+    await new Promise((r) => setTimeout(r, 400));
+
+    // Puerto dinámico → sin choques con zombies. dbPath persistente.
+    mongo = await MongoMemoryServer.create({
+      instance: { dbPath: mongoDataDir(), storageEngine: 'wiredTiger' },
+    });
+    const mongoUri = mongo.getUri('gymscore');
 
     const secret = localSecret();
     backend = fork(backendEntry(), [], {
@@ -82,7 +104,7 @@ export async function ensureBackend(): Promise<void> {
         NODE_ENV: 'production',
         OFFLINE_MODE: 'true',
         PORT: String(LOCAL_PORT),
-        MONGO_URI: LOCAL_MONGO_URI,
+        MONGO_URI: mongoUri,
         JWT_SECRET: secret,
         OFFLINE_LOCAL_SECRET: secret,
         FRONTEND_BUILD_PATH: frontendBuildDir(),
@@ -138,12 +160,5 @@ export function stopAdvertising(): StackStatus {
 /** Todo abajo. Al cerrar la app. */
 export async function shutdownAll(): Promise<void> {
   stopAdvertising();
-  if (backend) {
-    backend.kill('SIGTERM');
-    backend = null;
-  }
-  if (mongo) {
-    await mongo.stop();
-    mongo = null;
-  }
+  await teardown();
 }

@@ -11,9 +11,9 @@ export const CLOUD_API_URL =
 export const LOCAL_PORT = 4000;
 export const LOCAL_API_URL = `http://127.0.0.1:${LOCAL_PORT}`;
 
-/** Puerto fijo del mongod local. */
-export const LOCAL_MONGO_PORT = 27017;
-export const LOCAL_MONGO_URI = `mongodb://127.0.0.1:${LOCAL_MONGO_PORT}/gymscore`;
+// El mongod local usa un puerto dinámico (lo elige mongodb-memory-server) para
+// evitar choques con instancias zombie de sesiones anteriores. La URI real se
+// arma en runtime con mongo.getUri().
 
 /** Nombre del servicio mDNS → http://gymscore.local:4000 */
 export const MDNS_NAME = 'gymscore';
