@@ -37,6 +37,16 @@ app.whenReady().then(async () => {
         headers: { 'x-offline-secret': 'wrong' },
       });
       console.log('[selftest] offline-local protegido:', imp.status, imp.status === 401 ? '→ OK' : '→ MAL');
+
+      // payload grande (~2MB) — no debe dar 413
+      const { localSecret } = await import('./config');
+      const big = { meta: {}, filler: 'x'.repeat(2_000_000) };
+      const large = await fetch(`${getStatus().url}/api/offline-local/import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-offline-secret': localSecret() },
+        body: JSON.stringify(big),
+      });
+      console.log('[selftest] import 2MB:', large.status, large.status !== 413 ? '→ OK (no 413)' : '→ MAL (413)');
     } catch (err) {
       console.error('[selftest] FALLÓ:', err);
     } finally {
