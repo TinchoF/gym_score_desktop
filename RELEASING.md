@@ -60,15 +60,31 @@ querés que reemplace el botón de descarga (una beta, por ejemplo), marcalo com
 ## Si algo salió mal
 
 - **Quedó como draft** (`gh release create` cortado, ej. por la subida grande): `gh release edit v0.2.0 --draft=false`.
+- **El release quedó "Latest" pero con 0 assets** (pasó una vez: `gh release create` corriendo en
+  background/con la salida redirigida a un pipe devolvió éxito pero la subida del asset nunca llegó —
+  `gh release view vX.Y.Z --json assets` daba vacío, y el link de descarga seguía sirviendo la versión
+  vieja). Antes de dar por buena una publicación, **verificar siempre** que `assets` no esté vacío
+  (paso de "Verificar que quedó bien" abajo) y que el checksum del link público coincida con el
+  archivo local:
+  ```bash
+  shasum -a 256 release/GymScore-Modo-Sede.dmg
+  curl -sL https://github.com/TinchoF/gym_score_desktop/releases/latest/download/GymScore-Modo-Sede.dmg | shasum -a 256
+  ```
+  Si no coinciden: `gh release delete vX.Y.Z --cleanup-tag` y volver a correr `gh release create`
+  **en foreground**, sin pipear la salida a `tail`/backgroundear el proceso.
 - **Subiste el asset con otro nombre**: `gh release delete-asset v0.2.0 <nombre>` y volvé a subir con
   `gh release upload v0.2.0 release/GymScore-Modo-Sede.dmg` (el nombre del archivo local ya es el correcto).
 - **Borrar un release entero**: `gh release delete v0.2.0 --cleanup-tag` (borra el tag también).
 
 ## Firma de código
 
-Sigue sin firmar (`identity: null` en `electron-builder.yml`) — ver la sección "Firma de código" en
-`../GymScore/docs/MODO_SEDE.md`. Mientras tanto, cada instalación nueva necesita clic derecho → Abrir
-la primera vez.
+**Ad-hoc firmado** (gratis, sin cuenta de Apple Developer) vía el hook `afterSign: build/afterSign.js`
+en `electron-builder.yml` — corre `codesign --force --deep --sign -` sobre el `.app` antes de armar
+el `.dmg`. Es imprescindible: en Apple Silicon, un build **sin ninguna firma** no arranca — macOS lo
+reporta como *"está dañado y no puede abrirse"* en vez del aviso habitual de desarrollador no
+identificado (esto pasó en la v0.1.0, corregido en v0.1.1). El ad-hoc no reemplaza la notarización:
+sigue haciendo falta clic derecho → Abrir la primera vez. Ver la sección "Firma de código" en
+`../GymScore/docs/MODO_SEDE.md` para el camino a firma real (USD 99/año).
 
 ## Solo Apple Silicon (por ahora)
 
