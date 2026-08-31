@@ -85,16 +85,29 @@
 
   async function loadList() {
     $('#listMsg').textContent = 'Cargando…';
-    const [instR, pendR] = await Promise.all([api.listInstitutions(state.token), api.getPending()]);
-    state.localPendingData = pendR.ok && Array.isArray(pendR.data) ? pendR.data : [];
-    state.localPending = new Set(state.localPendingData.map((i) => String(i._id)));
-
+    // La lista de la nube es rápida — se muestra ya. El chequeo local puede
+    // arrancar el servidor local (la PRIMERA vez baja el binario de mongod,
+    // puede tardar bastante) así que va aparte, sin bloquear esta pantalla.
+    const instR = await api.listInstitutions(state.token);
     if (!instR.ok) {
-      $('#listMsg').textContent = 'Sin conexión a la nube — mostrando solo lo que está en esta laptop.';
-      state.institutions = state.localPendingData;
+      $('#listMsg').textContent = 'Sin conexión a la nube — revisando la copia local…';
     } else {
       $('#listMsg').textContent = '';
       state.institutions = instR.data;
+    }
+    renderList();
+    checkLocalPending(!instR.ok);
+  }
+
+  async function checkLocalPending(useAsFallback) {
+    $('#localCheckMsg').textContent = 'Revisando copia local… (puede tardar la primera vez que se usa esta laptop)';
+    const pendR = await api.getPending();
+    $('#localCheckMsg').textContent = '';
+    state.localPendingData = pendR.ok && Array.isArray(pendR.data) ? pendR.data : [];
+    state.localPending = new Set(state.localPendingData.map((i) => String(i._id)));
+    if (useAsFallback) {
+      state.institutions = state.localPendingData;
+      $('#listMsg').textContent = state.institutions.length ? '' : 'Sin conexión a la nube y sin copia local en esta laptop.';
     }
     renderList();
   }
