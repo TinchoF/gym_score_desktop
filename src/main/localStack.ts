@@ -1,6 +1,13 @@
 /**
  * Ciclo de vida del "stack local": mongod embebido + backend GymScore en
  * OFFLINE_MODE + anuncio mDNS. Ver docs/MODO_SEDE.md en el repo del frontend.
+ *
+ * Modelo:
+ *  - `ensureBackend()`  — arranca mongo + backend si no están (idempotente). Lo
+ *    necesitan "Preparar", "Servir" y "Sincronizar".
+ *  - `startAdvertising()` / `stopAdvertising()` — mDNS + powerSaveBlocker. Es lo
+ *    que prende/apaga el botón SERVIR. El backend queda corriendo igual.
+ *  - `shutdownAll()` — todo, al cerrar la app.
  */
 import { fork, ChildProcess } from 'child_process';
 import { powerSaveBlocker } from 'electron';
@@ -22,30 +29,30 @@ let mongo: MongoMemoryServer | null = null;
 let backend: ChildProcess | null = null;
 let bonjour: Bonjour | null = null;
 let powerBlockerId: number | null = null;
+let starting: Promise<void> | null = null;
 
 export interface StackStatus {
-  serving: boolean;
-  mongoUp: boolean;
   backendUp: boolean;
+  mongoUp: boolean;
+  advertising: boolean;
   url: string;
   mdnsUrl: string;
 }
 
 export function getStatus(): StackStatus {
   return {
-    serving: !!backend,
-    mongoUp: !!mongo,
     backendUp: !!backend && !backend.killed,
+    mongoUp: !!mongo,
+    advertising: !!bonjour,
     url: LOCAL_API_URL,
     mdnsUrl: `http://${MDNS_NAME}.local:${LOCAL_PORT}`,
   };
 }
 
-async function waitForHealth(timeoutMs = 20000): Promise<void> {
+async function waitForHealth(timeoutMs = 25000): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     try {
-      // el backend responde 404 JSON en rutas desconocidas; con que conteste alcanza
       const res = await fetch(`${LOCAL_API_URL}/api/institution/by-code/__healthcheck__`);
       if (res.status < 500) return;
     } catch {
@@ -56,54 +63,68 @@ async function waitForHealth(timeoutMs = 20000): Promise<void> {
   throw new Error('El backend local no respondió a tiempo');
 }
 
-export async function startLocalStack(): Promise<StackStatus> {
-  if (backend) return getStatus();
+/** Arranca mongo + backend si no están corriendo. Idempotente y con lock. */
+export async function ensureBackend(): Promise<void> {
+  if (backend && !backend.killed) return;
+  if (starting) return starting;
 
-  // 1. mongod local, persistente
-  mongo = await MongoMemoryServer.create({
-    instance: { port: LOCAL_MONGO_PORT, dbPath: mongoDataDir(), storageEngine: 'wiredTiger' },
-  });
+  starting = (async () => {
+    if (!mongo) {
+      mongo = await MongoMemoryServer.create({
+        instance: { port: LOCAL_MONGO_PORT, dbPath: mongoDataDir(), storageEngine: 'wiredTiger' },
+      });
+    }
 
-  // 2. backend en OFFLINE_MODE
-  const secret = localSecret();
-  backend = fork(backendEntry(), [], {
-    env: {
-      ...process.env,
-      NODE_ENV: 'production',
-      OFFLINE_MODE: 'true',
-      PORT: String(LOCAL_PORT),
-      MONGO_URI: LOCAL_MONGO_URI,
-      JWT_SECRET: secret,
-      OFFLINE_LOCAL_SECRET: secret,
-      FRONTEND_BUILD_PATH: frontendBuildDir(),
-    },
-    stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
-  });
-  backend.stdout?.on('data', (d) => console.log('[backend]', d.toString().trim()));
-  backend.stderr?.on('data', (d) => console.error('[backend]', d.toString().trim()));
-  backend.on('exit', (code) => {
-    console.error('[backend] exited', code);
-    backend = null;
-  });
+    const secret = localSecret();
+    backend = fork(backendEntry(), [], {
+      env: {
+        ...process.env,
+        NODE_ENV: 'production',
+        OFFLINE_MODE: 'true',
+        PORT: String(LOCAL_PORT),
+        MONGO_URI: LOCAL_MONGO_URI,
+        JWT_SECRET: secret,
+        OFFLINE_LOCAL_SECRET: secret,
+        FRONTEND_BUILD_PATH: frontendBuildDir(),
+      },
+      stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+    });
+    backend.stdout?.on('data', (d) => console.log('[backend]', d.toString().trim()));
+    backend.stderr?.on('data', (d) => console.error('[backend]', d.toString().trim()));
+    backend.on('exit', (code) => {
+      console.error('[backend] exited', code);
+      backend = null;
+    });
 
-  await waitForHealth();
+    await waitForHealth();
+  })();
 
-  // 3. mDNS → gymscore.local
-  bonjour = new Bonjour();
-  bonjour.publish({ name: MDNS_NAME, type: 'http', port: LOCAL_PORT, host: `${MDNS_NAME}.local` });
+  try {
+    await starting;
+  } finally {
+    starting = null;
+  }
+}
 
-  // 4. no dejar dormir la laptop mientras sirve
-  powerBlockerId = powerSaveBlocker.start('prevent-app-suspension');
-
+/** Prende el anuncio mDNS + evita que la laptop se duerma. Arranca el backend si hace falta. */
+export async function startAdvertising(): Promise<StackStatus> {
+  await ensureBackend();
+  if (!bonjour) {
+    bonjour = new Bonjour();
+    bonjour.publish({ name: MDNS_NAME, type: 'http', port: LOCAL_PORT, host: `${MDNS_NAME}.local` });
+  }
+  if (powerBlockerId === null) {
+    powerBlockerId = powerSaveBlocker.start('prevent-app-suspension');
+  }
   return getStatus();
 }
 
-export async function stopLocalStack(): Promise<StackStatus> {
+/** Apaga mDNS + powerSaveBlocker. El backend sigue corriendo (sync, reanudar serve). */
+export function stopAdvertising(): StackStatus {
   if (powerBlockerId !== null && powerSaveBlocker.isStarted(powerBlockerId)) {
     powerSaveBlocker.stop(powerBlockerId);
   }
   powerBlockerId = null;
-
   try {
     bonjour?.unpublishAll();
     bonjour?.destroy();
@@ -111,7 +132,12 @@ export async function stopLocalStack(): Promise<StackStatus> {
     /* noop */
   }
   bonjour = null;
+  return getStatus();
+}
 
+/** Todo abajo. Al cerrar la app. */
+export async function shutdownAll(): Promise<void> {
+  stopAdvertising();
   if (backend) {
     backend.kill('SIGTERM');
     backend = null;
@@ -120,5 +146,4 @@ export async function stopLocalStack(): Promise<StackStatus> {
     await mongo.stop();
     mongo = null;
   }
-  return getStatus();
 }

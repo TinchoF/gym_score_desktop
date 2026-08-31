@@ -39,12 +39,17 @@ export async function listInstitutions(token: string): Promise<any[]> {
   return j(await fetch(`${CLOUD_API_URL}/api/institution`, { headers: { Authorization: `Bearer ${token}` } }));
 }
 
-export async function lockInstitution(token: string, institutionId: string, deviceLabel?: string) {
+export async function lockInstitution(
+  token: string,
+  institutionId: string,
+  deviceLabel?: string,
+  force = false,
+) {
   return j(
     await fetch(`${CLOUD_API_URL}/api/offline/institutions/${institutionId}/lock`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ deviceLabel }),
+      body: JSON.stringify({ deviceLabel, force }),
     }),
   );
 }
@@ -98,9 +103,13 @@ async function exportLocal(institutionId: string): Promise<any> {
 
 // --- flujos completos ---
 
-/** Bloquea la institución en la nube, baja el bundle y lo carga en la DB local. */
+/**
+ * Bloquea la institución en la nube, baja el bundle y lo carga en la DB local.
+ * `force` en el lock: si ya estaba bloqueada (reintento tras un fallo, u otra
+ * laptop), el super-admin re-toma el candado en esta laptop.
+ */
 export async function prepareForOffline(token: string, institutionId: string, deviceLabel?: string) {
-  await lockInstitution(token, institutionId, deviceLabel);
+  await lockInstitution(token, institutionId, deviceLabel, true);
   const bundle = await getBundle(token, institutionId);
   const imported = await importLocal(bundle);
   return { imported, bundleMeta: bundle.meta };

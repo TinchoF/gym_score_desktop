@@ -27,9 +27,9 @@
     if (!r.ok) return;
     const s = r.data;
     $('#statusStrip').innerHTML = [
-      pill('Sirviendo', s.serving),
-      pill('Mongo', s.mongoUp),
+      pill('En la red', s.advertising),
       pill('Backend', s.backendUp),
+      pill('Mongo', s.mongoUp),
     ].join('');
   }
   setInterval(refreshStatus, 3000);
@@ -101,7 +101,7 @@
   // --- 3. servir ---
   $('#btnServe').addEventListener('click', async () => {
     const st = await api.getStatus();
-    if (st.ok && st.data.serving) {
+    if (st.ok && st.data.advertising) {
       await api.stopServing();
       $('#btnServe').textContent = 'SERVIR';
       $('#serveInfo').hidden = true;

@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'path';
-import { startLocalStack, stopLocalStack, getStatus } from './localStack';
+import { ensureBackend, startAdvertising, stopAdvertising, shutdownAll, getStatus } from './localStack';
 import * as cloud from './cloud';
 import QRCode from 'qrcode';
 import { saveCreds, loadCreds, clearCreds } from './credentials';
@@ -26,19 +26,36 @@ function createWindow() {
   if (process.env.GYMSCORE_DEVTOOLS === '1') win.webContents.openDevTools({ mode: 'detach' });
 }
 
-app.whenReady().then(createWindow);
-
-app.on('window-all-closed', async () => {
-  await stopLocalStack();
-  if (process.platform !== 'darwin') app.quit();
+app.whenReady().then(async () => {
+  if (process.env.GYMSCORE_SELFTEST === '1') {
+    try {
+      console.log('[selftest] arrancando backend local…');
+      await ensureBackend();
+      const res = await fetch(`${getStatus().url}/api/institution/by-code/__x__`);
+      console.log('[selftest] backend responde:', res.status, '→ OK');
+      const imp = await fetch(`${getStatus().url}/api/offline-local/export?institutionId=x`, {
+        headers: { 'x-offline-secret': 'wrong' },
+      });
+      console.log('[selftest] offline-local protegido:', imp.status, imp.status === 401 ? '→ OK' : '→ MAL');
+    } catch (err) {
+      console.error('[selftest] FALLÓ:', err);
+    } finally {
+      await shutdownAll();
+      app.exit(0);
+    }
+    return;
+  }
+  createWindow();
 });
 
+let quitting = false;
+app.on('window-all-closed', () => app.quit());
 app.on('before-quit', async (e) => {
-  if (getStatus().serving) {
-    e.preventDefault();
-    await stopLocalStack();
-    app.quit();
-  }
+  if (quitting) return;
+  e.preventDefault();
+  quitting = true;
+  await shutdownAll();
+  app.quit();
 });
 
 // --- IPC ---
@@ -54,8 +71,8 @@ const handle = <T,>(ch: string, fn: (...a: any[]) => Promise<T> | T) =>
 handle('config:get', () => ({ cloudUrl: CLOUD_API_URL }));
 handle('qr:make', (text: string) => QRCode.toDataURL(text, { width: 260, margin: 1 }));
 handle('status:get', () => getStatus());
-handle('serve:start', () => startLocalStack());
-handle('serve:stop', () => stopLocalStack());
+handle('serve:start', () => startAdvertising());
+handle('serve:stop', () => stopAdvertising());
 
 handle('creds:load', () => loadCreds());
 handle('creds:save', (username: string, password: string) => {
@@ -82,10 +99,12 @@ handle('cloud:login', async (username: string, password: string, remember?: bool
   return result;
 });
 handle('cloud:institutions', (token: string) => cloud.listInstitutions(token));
-handle('cloud:prepare', (token: string, institutionId: string, deviceLabel?: string) =>
-  cloud.prepareForOffline(token, institutionId, deviceLabel),
-);
-handle('cloud:sync', (token: string, institutionId: string, finalize: boolean) =>
-  cloud.syncToCloud(token, institutionId, finalize),
-);
+handle('cloud:prepare', async (token: string, institutionId: string, deviceLabel?: string) => {
+  await ensureBackend(); // el import va al backend local — tiene que estar arriba
+  return cloud.prepareForOffline(token, institutionId, deviceLabel);
+});
+handle('cloud:sync', async (token: string, institutionId: string, finalize: boolean) => {
+  await ensureBackend(); // el export sale del backend local
+  return cloud.syncToCloud(token, institutionId, finalize);
+});
 handle('cloud:unlock', (token: string, institutionId: string) => cloud.unlockInstitution(token, institutionId));
