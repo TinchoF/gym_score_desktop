@@ -40,21 +40,32 @@
     const r = await api.getPending();
     if (!r.ok || !Array.isArray(r.data) || r.data.length === 0) {
       $('#pendingBar').hidden = true;
+      state.pending = null;
       return;
     }
     const inst = r.data[0];
     state.pending = inst;
+    if (!state.institutionId) state.institutionId = inst._id;
+    $('#pendingBar').hidden = false;
+
+    if (!state.token) {
+      // pre-login: no filtramos el nombre de la institución
+      $('#pendingText').textContent =
+        `⚠️ Hay ${r.data.length} jornada${r.data.length > 1 ? 's' : ''} sin sincronizar — conectate para sincronizarla${r.data.length > 1 ? 's' : ''}`;
+      $('#btnGoSync').textContent = 'Conectar';
+      $('#syncTarget').textContent = '';
+      return;
+    }
     const since = inst.offlineMode && inst.offlineMode.since
       ? new Date(inst.offlineMode.since).toLocaleDateString('es-AR')
       : null;
     $('#pendingText').textContent =
       `⚠️ Jornada sin sincronizar: ${inst.name}${since ? ` (desde ${since})` : ''}`;
-    $('#pendingBar').hidden = false;
+    $('#btnGoSync').textContent = 'Ir a sincronizar';
     $('#syncTarget').textContent = `Institución: ${inst.name}`;
-    if (!state.institutionId) state.institutionId = inst._id;
   }
   checkPending();
-  $('#btnGoSync').addEventListener('click', () => show('sincronizar'));
+  $('#btnGoSync').addEventListener('click', () => show(state.token ? 'sincronizar' : 'conectar'));
 
   // --- 1. login ---
   async function doLogin() {
@@ -68,8 +79,9 @@
     state.role = r.data.role;
     $('#loginMsg').textContent = 'Conectado ✓';
     $('#btnForget').hidden = !$('#remember').checked;
+    await checkPending(); // ahora sí puede mostrar el nombre
     await loadInstitutions();
-    show('institucion');
+    show(state.pending ? 'sincronizar' : 'institucion');
   }
   $('#btnLogin').addEventListener('click', doLogin);
   $('#pass').addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
