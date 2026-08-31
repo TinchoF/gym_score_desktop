@@ -75,14 +75,13 @@ async function pushSync(
   token: string,
   institutionId: string,
   payload: any,
-  finalize: boolean,
-  conflictResolution?: 'overwrite' | 'keepCloud',
+  extra: { finalize?: boolean; conflictResolution?: 'overwrite' | 'keepCloud'; dryRun?: boolean },
 ): Promise<any> {
   return j(
     await fetch(`${CLOUD_API_URL}/api/offline/institutions/${institutionId}/sync`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ ...payload, finalize, conflictResolution }),
+      body: JSON.stringify({ ...payload, ...extra }),
     }),
   );
 }
@@ -138,5 +137,11 @@ export async function syncToCloud(
   conflictResolution?: 'overwrite' | 'keepCloud',
 ) {
   const payload = await exportLocal(institutionId);
-  return pushSync(token, institutionId, payload, finalize, conflictResolution);
+  return pushSync(token, institutionId, payload, { finalize, conflictResolution });
+}
+
+/** Preview: qué haría la sincronización, sin escribir nada ni tocar el candado. */
+export async function previewChanges(token: string, institutionId: string) {
+  const payload = await exportLocal(institutionId);
+  return pushSync(token, institutionId, payload, { dryRun: true });
 }

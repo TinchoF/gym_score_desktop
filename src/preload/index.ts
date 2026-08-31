@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('api', {
   loadCreds: () => invoke('creds:load'),
   clearCreds: () => invoke('creds:clear'),
   getPending: () => invoke('local:pending'),
+  previewChanges: (token: string, id: string) => invoke('cloud:preview', token, id),
   login: (u: string, p: string, remember?: boolean) => invoke('cloud:login', u, p, remember),
   listInstitutions: (token: string) => invoke('cloud:institutions', token),
   prepare: (token: string, id: string, deviceLabel?: string) => invoke('cloud:prepare', token, id, deviceLabel),

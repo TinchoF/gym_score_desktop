@@ -205,53 +205,63 @@
       $('#syncResult').textContent = `Error: ${r.error}\n${JSON.stringify(r.body || {}, null, 2)}`;
       return;
     }
-    const d = r.data;
-
-    // Reporte real: qué se creó / actualizó / quedó igual / quedó pendiente de baja.
-    const LABELS = {
-      tournaments: 'torneos', gymnasts: 'gimnastas', judges: 'jueces', scores: 'puntajes', rotations: 'rotaciones',
-    };
-    const lines = [];
-    for (const [col, ch] of Object.entries(d.changes || {})) {
-      const parts = [];
-      if (ch.created.length) parts.push(`${ch.created.length} nuevas`);
-      if (ch.updated.length) parts.push(`${ch.updated.length} modificadas`);
-      if (ch.deleted.length) parts.push(`${ch.deleted.length} para borrar a mano`);
-      if (parts.length) lines.push(`  ${LABELS[col] || col}: ${parts.join(', ')} (${ch.unchanged} sin cambios)`);
-    }
-    const detail = (arr, verb) =>
-      arr.slice(0, 8).map((x) => `    · ${verb} ${x.label}${x.changedFields ? ` (${x.changedFields.join(', ')})` : ''}`).join('\n');
-    const detailBlocks = Object.entries(d.changes || {})
-      .flatMap(([col, ch]) => [
-        ...(ch.created.length ? [detail(ch.created, 'creó')] : []),
-        ...(ch.updated.length ? [detail(ch.updated, 'actualizó')] : []),
-        ...(ch.deleted.length ? [detail(ch.deleted, 'baja pendiente:')] : []),
-      ])
-      .filter(Boolean)
-      .join('\n');
-
-    const kept = (d.keptCloud || []).length
-      ? `Se mantuvo la versión de la nube en ${d.keptCloud.length} doc(s).\n`
-      : d.resolution === 'overwrite'
-        ? 'La sede pisó los cambios de la nube.\n'
-        : '';
-
-    let head;
-    if (finalize) head = '✓ Finalizado — la institución quedó desbloqueada online.';
-    else if (d.upToDate) head = '✓ Todo sincronizado — no había cambios pendientes.';
-    else head = '✓ Sincronizado (sigue en modo sede).';
-
-    $('#syncResult').textContent =
-      head + '\n' + kept + (lines.length ? lines.join('\n') + '\n' + detailBlocks : 'Sin cambios.');
-
+    $('#syncResult').textContent = renderReport(r.data, { finalize, dryRun: false });
     if (finalize) {
       $('#btnSync').disabled = true;
       $('#btnFinalize').disabled = true;
     }
     await checkPending();
   }
+
+  const COL_LABELS = {
+    tournaments: 'torneos', gymnasts: 'gimnastas', judges: 'jueces', scores: 'puntajes', rotations: 'rotaciones',
+  };
+  function renderReport(d, { finalize, dryRun }) {
+    const lines = [];
+    for (const [col, ch] of Object.entries(d.changes || {})) {
+      const parts = [];
+      if (ch.created.length) parts.push(`${ch.created.length} nuevas`);
+      if (ch.updated.length) parts.push(`${ch.updated.length} modificadas`);
+      if (ch.deleted.length) parts.push(`${ch.deleted.length} para borrar a mano`);
+      if (parts.length) lines.push(`  ${COL_LABELS[col] || col}: ${parts.join(', ')} (${ch.unchanged} sin cambios)`);
+    }
+    const detail = (arr, verb) =>
+      arr.slice(0, 12).map((x) => `    · ${verb} ${x.label}${x.changedFields ? ` (${x.changedFields.join(', ')})` : ''}`).join('\n');
+    const detailBlocks = Object.entries(d.changes || {})
+      .flatMap(([, ch]) => [
+        ...(ch.created.length ? [detail(ch.created, 'nueva:')] : []),
+        ...(ch.updated.length ? [detail(ch.updated, 'modificada:')] : []),
+        ...(ch.deleted.length ? [detail(ch.deleted, 'baja pendiente:')] : []),
+      ])
+      .filter(Boolean)
+      .join('\n');
+
+    const kept = (d.keptCloud || []).length
+      ? `Se mantiene la versión de la nube en ${d.keptCloud.length} doc(s).\n`
+      : d.resolution === 'overwrite' ? 'La sede pisa los cambios de la nube.\n' : '';
+    const conf = (d.conflicts || []).length
+      ? `⚠️ ${d.conflicts.length} conflicto(s) con cambios hechos en la nube — se resuelven al sincronizar.\n`
+      : '';
+
+    let head;
+    if (dryRun) head = d.upToDate ? '✓ Al día — no hay nada para sincronizar.' : 'Cambios pendientes de sincronizar:';
+    else if (finalize) head = '✓ Finalizado — la institución quedó desbloqueada online.';
+    else if (d.upToDate) head = '✓ Todo sincronizado — no había cambios pendientes.';
+    else head = '✓ Sincronizado (sigue en modo sede).';
+
+    return head + '\n' + conf + kept + (lines.length ? lines.join('\n') + '\n' + detailBlocks : (dryRun ? '' : 'Sin cambios.'));
+  }
+
   $('#btnSync').addEventListener('click', () => doSync(false));
   $('#btnFinalize').addEventListener('click', () => doSync(true));
+  $('#btnCheck').addEventListener('click', async () => {
+    if (!state.token || !state.institutionId) return;
+    $('#syncResult').textContent = 'Verificando…';
+    const r = await api.previewChanges(state.token, state.institutionId);
+    $('#syncResult').textContent = r.ok
+      ? renderReport(r.data, { finalize: false, dryRun: true })
+      : `Error: ${r.error}`;
+  });
   $('#btnUnlock').addEventListener('click', async () => {
     if (!state.token) { show('conectar'); return; }
     if (!confirm('¿Forzar desbloqueo? Se descarta TODO lo de la jornada que no haya llegado a la nube.')) return;
