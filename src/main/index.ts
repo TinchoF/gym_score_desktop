@@ -1,10 +1,12 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, nativeImage } from 'electron';
 import path from 'path';
 import { ensureBackend, startAdvertising, stopAdvertising, shutdownAll, getStatus } from './localStack';
 import * as cloud from './cloud';
 import QRCode from 'qrcode';
 import { saveCreds, loadCreds, clearCreds } from './credentials';
 import { CLOUD_API_URL } from './config';
+
+app.setName('GymScore Modo Sede'); // nombre en el menú / dock en dev
 
 let win: BrowserWindow | null = null;
 
@@ -28,6 +30,14 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  // En dev en macOS el icono del dock no lo toma de BrowserWindow.icon → hay que
+  // setearlo a mano. Empaquetada usa el .icns del bundle (build/icon.png).
+  if (process.platform === 'darwin' && !app.isPackaged && app.dock) {
+    const iconPath = path.join(__dirname, '..', '..', 'build', 'icon.png');
+    const img = nativeImage.createFromPath(iconPath);
+    if (!img.isEmpty()) app.dock.setIcon(img);
+  }
+
   if (process.env.GYMSCORE_SELFTEST === '1') {
     try {
       console.log('[selftest] arrancando backend local…');
