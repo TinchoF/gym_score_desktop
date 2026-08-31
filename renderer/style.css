@@ -53,6 +53,9 @@ button {
 }
 button.primary { background: var(--orange); color: #fff; }
 button.danger { border-color: #b23; color: #b23; }
+button.ghost { border-color: var(--rule); color: var(--muted); }
+label.inline { display: flex; align-items: center; gap: 6px; }
+label.inline input { display: inline; width: auto; margin: 0; }
 button.big { font-size: 22px; padding: 18px 40px; background: var(--ok); color: #fff; border-color: var(--ok); }
 .row { display: flex; gap: 10px; flex-wrap: wrap; }
 .msg { font-size: 13px; margin-top: 10px; min-height: 18px; }

@@ -28,7 +28,11 @@
       <p class="muted">Login de <strong>super-admin</strong>. Necesitás internet solo para este paso y para sincronizar al final.</p>
       <label>Usuario <input id="user" type="text" autocomplete="username" placeholder="usuario de super-admin" /></label>
       <label>Contraseña <input id="pass" type="password" autocomplete="current-password" /></label>
-      <button id="btnLogin">Ingresar</button>
+      <label class="inline"><input id="remember" type="checkbox" /> Recordar en esta laptop</label>
+      <div class="row">
+        <button id="btnLogin">Ingresar</button>
+        <button id="btnForget" class="ghost" hidden>Olvidar credenciales</button>
+      </div>
       <p id="loginMsg" class="msg"></p>
     </section>
 

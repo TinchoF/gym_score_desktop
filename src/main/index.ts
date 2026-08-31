@@ -3,6 +3,7 @@ import path from 'path';
 import { startLocalStack, stopLocalStack, getStatus } from './localStack';
 import * as cloud from './cloud';
 import QRCode from 'qrcode';
+import { saveCreds, loadCreds, clearCreds } from './credentials';
 import { CLOUD_API_URL } from './config';
 
 let win: BrowserWindow | null = null;
@@ -56,7 +57,30 @@ handle('status:get', () => getStatus());
 handle('serve:start', () => startLocalStack());
 handle('serve:stop', () => stopLocalStack());
 
-handle('cloud:login', (username: string, password: string) => cloud.login(username, password));
+handle('creds:load', () => loadCreds());
+handle('creds:save', (username: string, password: string) => {
+  saveCreds({ username, password });
+  return true;
+});
+handle('creds:clear', () => {
+  clearCreds();
+  return true;
+});
+
+handle('cloud:login', async (username: string, password: string, remember?: boolean) => {
+  const result = await cloud.login(username, password);
+  // solo llegamos acá si el login fue OK
+  if (remember) {
+    try {
+      saveCreds({ username, password });
+    } catch {
+      /* cifrado del sistema no disponible: seguimos sin guardar */
+    }
+  } else {
+    clearCreds();
+  }
+  return result;
+});
 handle('cloud:institutions', (token: string) => cloud.listInstitutions(token));
 handle('cloud:prepare', (token: string, institutionId: string, deviceLabel?: string) =>
   cloud.prepareForOffline(token, institutionId, deviceLabel),

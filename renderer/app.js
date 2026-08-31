@@ -36,9 +36,9 @@
   refreshStatus();
 
   // --- 1. login ---
-  $('#btnLogin').addEventListener('click', async () => {
+  async function doLogin() {
     $('#loginMsg').textContent = 'Conectando…';
-    const r = await api.login($('#user').value.trim(), $('#pass').value);
+    const r = await api.login($('#user').value.trim(), $('#pass').value, $('#remember').checked);
     if (!r.ok) {
       $('#loginMsg').textContent = `Error: ${r.error}`;
       return;
@@ -46,9 +46,30 @@
     state.token = r.data.token;
     state.role = r.data.role;
     $('#loginMsg').textContent = 'Conectado ✓';
+    $('#btnForget').hidden = !$('#remember').checked;
     await loadInstitutions();
     show('institucion');
+  }
+  $('#btnLogin').addEventListener('click', doLogin);
+  $('#pass').addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
+  $('#btnForget').addEventListener('click', async () => {
+    await api.clearCreds();
+    $('#remember').checked = false;
+    $('#btnForget').hidden = true;
+    $('#loginMsg').textContent = 'Credenciales borradas de esta laptop.';
   });
+
+  // pre-cargar credenciales guardadas
+  (async () => {
+    const saved = await api.loadCreds();
+    if (saved && saved.ok && saved.data) {
+      $('#user').value = saved.data.username || '';
+      $('#pass').value = saved.data.password || '';
+      $('#remember').checked = true;
+      $('#btnForget').hidden = false;
+      $('#loginMsg').textContent = 'Credenciales recordadas — apretá Ingresar.';
+    }
+  })();
 
   async function loadInstitutions() {
     const r = await api.listInstitutions(state.token);

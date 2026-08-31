@@ -6,6 +6,7 @@ import { CLOUD_API_URL, LOCAL_API_URL, localSecret } from './config';
 
 async function j<T>(res: Response): Promise<T> {
   const body = await res.json().catch(() => ({}));
+  console.log(`[cloud] ${res.status} ${res.url}`);
   if (!res.ok) {
     const err: any = new Error((body as any)?.error || `HTTP ${res.status}`);
     err.status = res.status;
