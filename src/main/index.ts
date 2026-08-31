@@ -52,6 +52,11 @@ app.whenReady().then(async () => {
         headers: { 'x-offline-secret': localSecret() },
       });
       console.log('[selftest] pending:', pend.status, pend.status === 200 ? '→ OK' : '→ MAL');
+
+      const root = await fetch(`${getStatus().url}/`);
+      const html = (await root.text()).slice(0, 60);
+      const okRoot = root.status === 200 && html.toLowerCase().includes('<!doctype html');
+      console.log('[selftest] GET / :', root.status, okRoot ? '→ OK (sirve el frontend)' : `→ MAL (${html})`);
     } catch (err) {
       console.error('[selftest] FALLÓ:', err);
     } finally {

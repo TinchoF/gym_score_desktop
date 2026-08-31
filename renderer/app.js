@@ -48,10 +48,11 @@
     if (!state.institutionId) state.institutionId = inst._id;
     $('#pendingBar').hidden = false;
 
+    const n = r.data.length;
     if (!state.token) {
       // pre-login: no filtramos el nombre de la institución
       $('#pendingText').textContent =
-        `⚠️ Hay ${r.data.length} jornada${r.data.length > 1 ? 's' : ''} sin sincronizar — conectate para sincronizarla${r.data.length > 1 ? 's' : ''}`;
+        `🔒 ${n} institución${n > 1 ? 'es' : ''} en modo sede en esta laptop — conectate para sincronizar y finalizar`;
       $('#btnGoSync').textContent = 'Conectar';
       $('#syncTarget').textContent = '';
       return;
@@ -59,8 +60,10 @@
     const since = inst.offlineMode && inst.offlineMode.since
       ? new Date(inst.offlineMode.since).toLocaleDateString('es-AR')
       : null;
+    const synced = inst.offlineMode && inst.offlineMode.lastSyncAt;
     $('#pendingText').textContent =
-      `⚠️ Jornada sin sincronizar: ${inst.name}${since ? ` (desde ${since})` : ''}`;
+      `🔒 Modo sede activo: ${inst.name}${since ? ` (desde ${since})` : ''}` +
+      (synced ? '' : ' — todavía sin sincronizar');
     $('#btnGoSync').textContent = 'Ir a sincronizar';
     $('#syncTarget').textContent = `Institución: ${inst.name}`;
   }
