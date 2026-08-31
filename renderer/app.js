@@ -204,20 +204,48 @@
       return;
     }
     const d = r.data;
-    const del = (d.toReview && d.toReview.deletions) || {};
-    const delLines = Object.entries(del)
-      .filter(([, ids]) => ids.length)
-      .map(([k, ids]) => `  ${k}: ${ids.length} para revisar y borrar a mano`)
+
+    // Reporte real: qué se creó / actualizó / quedó igual / quedó pendiente de baja.
+    const LABELS = {
+      tournaments: 'torneos', gymnasts: 'gimnastas', judges: 'jueces', scores: 'puntajes', rotations: 'rotaciones',
+    };
+    const lines = [];
+    for (const [col, ch] of Object.entries(d.changes || {})) {
+      const parts = [];
+      if (ch.created.length) parts.push(`${ch.created.length} nuevas`);
+      if (ch.updated.length) parts.push(`${ch.updated.length} modificadas`);
+      if (ch.deleted.length) parts.push(`${ch.deleted.length} para borrar a mano`);
+      if (parts.length) lines.push(`  ${LABELS[col] || col}: ${parts.join(', ')} (${ch.unchanged} sin cambios)`);
+    }
+    const detail = (arr, verb) =>
+      arr.slice(0, 8).map((x) => `    · ${verb} ${x.label}${x.changedFields ? ` (${x.changedFields.join(', ')})` : ''}`).join('\n');
+    const detailBlocks = Object.entries(d.changes || {})
+      .flatMap(([col, ch]) => [
+        ...(ch.created.length ? [detail(ch.created, 'creó')] : []),
+        ...(ch.updated.length ? [detail(ch.updated, 'actualizó')] : []),
+        ...(ch.deleted.length ? [detail(ch.deleted, 'baja pendiente:')] : []),
+      ])
+      .filter(Boolean)
       .join('\n');
+
     const kept = (d.keptCloud || []).length
-      ? `\nse mantuvo la versión de la nube en ${d.keptCloud.length} doc(s)`
+      ? `Se mantuvo la versión de la nube en ${d.keptCloud.length} doc(s).\n`
       : d.resolution === 'overwrite'
-        ? '\nla sede pisó los cambios de la nube'
+        ? 'La sede pisó los cambios de la nube.\n'
         : '';
+
+    let head;
+    if (finalize) head = '✓ Finalizado — la institución quedó desbloqueada online.';
+    else if (d.upToDate) head = '✓ Todo sincronizado — no había cambios pendientes.';
+    else head = '✓ Sincronizado (sigue en modo sede).';
+
     $('#syncResult').textContent =
-      `OK ✓ ${finalize ? '(finalizado, candado liberado)' : '(sigue en modo sede)'}${kept}\n` +
-      `aplicados: ${JSON.stringify(d.applied)}\n` +
-      (delLines ? `bajas a revisar:\n${delLines}` : 'sin bajas a revisar');
+      head + '\n' + kept + (lines.length ? lines.join('\n') + '\n' + detailBlocks : 'Sin cambios.');
+
+    if (finalize) {
+      $('#btnSync').disabled = true;
+      $('#btnFinalize').disabled = true;
+    }
     await checkPending();
   }
   $('#btnSync').addEventListener('click', () => doSync(false));

@@ -58,6 +58,7 @@ button {
   margin-top: 12px; padding: 9px 16px; border: 1px solid var(--orange);
   background: #fff; color: var(--orange); border-radius: 6px; font-size: 14px; cursor: pointer;
 }
+button:disabled { opacity: .4; cursor: not-allowed; }
 button.primary { background: var(--orange); color: #fff; }
 button.danger { border-color: #b23; color: #b23; }
 button.ghost { border-color: var(--rule); color: var(--muted); }
